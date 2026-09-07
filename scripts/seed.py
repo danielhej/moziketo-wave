@@ -3,10 +3,11 @@
 import asyncio
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 
 from app.db.session import SessionLocal
 from app.models import Artist, Playlist, PlaylistKind, PlaylistTrack, Tag, TagKind, Track
+from app.models.associations import track_tags
 
 SAMPLE_ARTISTS = [
     {
@@ -70,8 +71,16 @@ async def _ensure_tags_and_playlist(session, track_map: dict[str, Track]) -> Non
         await session.flush()
 
     for track in track_map.values():
-        if pop not in track.tags:
-            track.tags.append(pop)
+        linked = await session.scalar(
+            select(track_tags.c.track_id).where(
+                track_tags.c.track_id == track.id,
+                track_tags.c.tag_id == pop.id,
+            )
+        )
+        if linked is None:
+            await session.execute(
+                insert(track_tags).values(track_id=track.id, tag_id=pop.id)
+            )
 
     existing_pl = await session.scalar(
         select(Playlist).where(Playlist.slug == EDITORIAL_PLAYLIST["slug"])
