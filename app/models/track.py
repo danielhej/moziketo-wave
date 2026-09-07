@@ -12,6 +12,7 @@ from app.db.base import Base
 from app.models.associations import track_tags
 
 if TYPE_CHECKING:
+    from app.models.album import Album
     from app.models.artist import Artist
     from app.models.playlist import PlaylistTrack
     from app.models.tag import Tag
@@ -26,6 +27,9 @@ class Track(Base):
     artist_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("artists.id", ondelete="CASCADE"), index=True
     )
+    album_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("albums.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     stream_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     cover_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -35,6 +39,7 @@ class Track(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     artist: Mapped[Artist] = relationship(back_populates="tracks", lazy="joined")
+    album: Mapped[Album | None] = relationship(back_populates="tracks", lazy="joined")
     tags: Mapped[list[Tag]] = relationship(
         secondary=track_tags,
         back_populates="tracks",

@@ -36,6 +36,7 @@ def _user_response(user: User) -> UserResponse:
         email_verified=user.email_verified_at is not None,
         has_password=user.password_hash is not None,
         oauth_providers=providers,
+        avatar_url=user.avatar_url,
     )
 
 
@@ -172,7 +173,10 @@ async def update_profile(
     session: AsyncSession, user_id: str, data: UpdateProfileRequest
 ) -> UserResponse:
     user = await _load_user_with_oauth(session, user_id)
-    user.display_name = data.display_name
+    if data.display_name is not None:
+        user.display_name = data.display_name
+    if "avatar_url" in data.model_fields_set:
+        user.avatar_url = data.avatar_url
     await session.commit()
     await session.refresh(user, ["oauth_accounts"])
     return _user_response(user)

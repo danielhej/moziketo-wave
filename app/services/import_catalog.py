@@ -268,6 +268,7 @@ async def import_catalog_payload(
 
     await session.commit()
     await cache_delete_pattern("tracks:*")
+    await cache_delete_pattern("albums:*")
     await cache_delete_pattern("browse:*")
     await cache_delete_pattern("tags:*")
     await cache_delete_pattern("playlists:*")

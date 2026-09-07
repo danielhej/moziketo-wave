@@ -117,10 +117,12 @@ class UserResponse(BaseModel):
     email_verified: bool = Field(description="Soft verification flag — login not blocked")
     has_password: bool = Field(description="False for OAuth-only accounts")
     oauth_providers: list[str] = Field(default_factory=list)
+    avatar_url: str | None = None
 
 
 class UpdateProfileRequest(BaseModel):
-    display_name: str = Field(min_length=1, max_length=200)
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    avatar_url: str | None = Field(default=None, max_length=500)
 
 
 class ChangePasswordRequest(BaseModel):

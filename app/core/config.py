@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     apple_private_key: str = ""
     oauth_apple_enabled: bool = False
 
+    # Object storage (Arvan S3)
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_public_base_url: str = ""
+    upload_max_bytes: int = 10_485_760
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

@@ -5,14 +5,22 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models import Artist, Playlist, PlaylistKind, PlaylistTrack, Track
-from app.schemas.admin_catalog import AdminArtistPatch, AdminPlaylistPatch, AdminTrackPatch
+from app.models import Album, Artist, Playlist, PlaylistKind, PlaylistTrack, Track
+from app.schemas.admin_catalog import (
+    AdminAlbumCreate,
+    AdminAlbumPatch,
+    AdminArtistPatch,
+    AdminPlaylistPatch,
+    AdminTrackPatch,
+)
 from app.services.cache import cache_delete_pattern
 
 
 async def _invalidate_catalog_cache() -> None:
-    await cache_delete_pattern("catalog:*")
+    for pattern in ("tracks:*", "albums:*", "browse:*", "artists:*", "playlists:*", "tags:*"):
+        await cache_delete_pattern(pattern)
 
 
 async def patch_track(session: AsyncSession, slug: str, data: AdminTrackPatch) -> Track:
@@ -106,3 +114,87 @@ async def patch_playlist(
     await session.refresh(playlist)
     await _invalidate_catalog_cache()
     return playlist
+
+
+async def create_album(session: AsyncSession, data: AdminAlbumCreate) -> Album:
+    artist = await session.scalar(select(Artist).where(Artist.slug == data.artist_slug))
+    if artist is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Artist not found")
+
+    existing = await session.scalar(select(Album).where(Album.slug == data.slug))
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Album slug already exists",
+        )
+
+    album = Album(
+        slug=data.slug,
+        title=data.title,
+        artist_id=artist.id,
+        cover_url=data.cover_url,
+        description=data.description,
+        published_at=data.published_at,
+    )
+    session.add(album)
+    await session.flush()
+
+    if data.track_slugs:
+        await _set_album_tracks(session, album, data.track_slugs)
+
+    await session.commit()
+    await session.refresh(album)
+    await _invalidate_catalog_cache()
+    return album
+
+
+async def _set_album_tracks(session: AsyncSession, album: Album, track_slugs: list[str]) -> None:
+    current = await session.scalars(select(Track).where(Track.album_id == album.id))
+    for track in current:
+        track.album_id = None
+
+    for track_slug in track_slugs:
+        track = await session.scalar(select(Track).where(Track.slug == track_slug))
+        if track is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Track not found: {track_slug}",
+            )
+        track.album_id = album.id
+
+
+async def patch_album(session: AsyncSession, slug: str, data: AdminAlbumPatch) -> Album:
+    album = await session.scalar(
+        select(Album).options(selectinload(Album.tracks)).where(Album.slug == slug)
+    )
+    if album is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+
+    if data.title is not None:
+        album.title = data.title
+    if data.cover_url is not None:
+        album.cover_url = data.cover_url
+    if data.description is not None:
+        album.description = data.description
+    if "published_at" in data.model_fields_set:
+        album.published_at = data.published_at
+
+    if data.track_slugs is not None:
+        await _set_album_tracks(session, album, data.track_slugs)
+
+    await session.commit()
+    await session.refresh(album)
+    await _invalidate_catalog_cache()
+    return album
+
+
+async def publish_album(session: AsyncSession, slug: str) -> Album:
+    return await patch_album(
+        session,
+        slug,
+        AdminAlbumPatch(published_at=datetime.now(UTC)),
+    )
+
+
+async def unpublish_album(session: AsyncSession, slug: str) -> Album:
+    return await patch_album(session, slug, AdminAlbumPatch(published_at=None))

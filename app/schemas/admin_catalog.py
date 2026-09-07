@@ -24,3 +24,21 @@ class AdminPlaylistPatch(BaseModel):
     cover_url: str | None = Field(default=None, max_length=500)
     published_at: datetime | None = None
     track_slugs: list[str] | None = None
+
+
+class AdminAlbumCreate(BaseModel):
+    slug: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=300)
+    artist_slug: str = Field(min_length=1, max_length=200)
+    cover_url: str | None = Field(default=None, max_length=500)
+    description: str | None = None
+    published_at: datetime | None = None
+    track_slugs: list[str] | None = None
+
+
+class AdminAlbumPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
+    cover_url: str | None = Field(default=None, max_length=500)
+    description: str | None = None
+    published_at: datetime | None = None
+    track_slugs: list[str] | None = None

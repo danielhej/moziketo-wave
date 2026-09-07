@@ -1,3 +1,4 @@
+from app.schemas.album import AlbumDetail, AlbumListResponse, AlbumSummary
 from app.schemas.browse import BrowseResponse, BrowseSection
 from app.schemas.catalog import (
     ArtistDetail,
@@ -19,6 +20,9 @@ from app.schemas.playlist import (
 from app.schemas.tag import TagListResponse, TagSummary, TagTrackListResponse
 
 __all__ = [
+    "AlbumDetail",
+    "AlbumListResponse",
+    "AlbumSummary",
     "ArtistDetail",
     "ArtistListResponse",
     "ArtistSummary",

@@ -13,7 +13,19 @@ from app.core.redis import connect_redis, disconnect_redis
 
 OPENAPI_TAGS = [
     {"name": "system", "description": "Health checks and service metadata."},
-    {"name": "catalog", "description": "Artists, tracks, browse, taxonomy, and search."},
+    {"name": "catalog", "description": "Artists, tracks, albums, browse, taxonomy, and search."},
+    {
+        "name": "history",
+        "description": "Listening history and play events (**BearerAuth** required).",
+    },
+    {
+        "name": "recommendations",
+        "description": "Personalized recommendations and similar tracks.",
+    },
+    {
+        "name": "uploads",
+        "description": "Avatar and admin media uploads to object storage.",
+    },
     {
         "name": "auth",
         "description": (
@@ -144,6 +156,10 @@ def create_app() -> FastAPI:
                 path.endswith("/auth/me")
                 or "/me/favorites" in path
                 or "/me/playlists" in path
+                or "/me/plays" in path
+                or "/me/history" in path
+                or "/me/recommendations" in path
+                or "/me/uploads" in path
             )
             if needs_bearer:
                 for method in methods.values():

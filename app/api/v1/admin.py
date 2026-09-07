@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db_session
 from app.core.config import get_settings
 from app.schemas.admin import ImportResult
-from app.schemas.admin_catalog import AdminArtistPatch, AdminPlaylistPatch, AdminTrackPatch
+from app.schemas.admin_catalog import (
+    AdminAlbumCreate,
+    AdminAlbumPatch,
+    AdminArtistPatch,
+    AdminPlaylistPatch,
+    AdminTrackPatch,
+)
 from app.services import admin_catalog, import_catalog, import_wp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -103,3 +109,55 @@ async def patch_playlist(
 ) -> dict[str, str]:
     playlist = await admin_catalog.patch_playlist(session, slug, payload)
     return {"slug": playlist.slug, "title": playlist.title}
+
+
+@router.post(
+    "/albums",
+    dependencies=[Depends(_verify_admin_key)],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create album",
+)
+async def create_album(
+    payload: AdminAlbumCreate,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    album = await admin_catalog.create_album(session, payload)
+    return {"slug": album.slug, "title": album.title}
+
+
+@router.patch(
+    "/albums/{slug}",
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Patch album metadata or track list",
+)
+async def patch_album(
+    slug: str,
+    payload: AdminAlbumPatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    album = await admin_catalog.patch_album(session, slug, payload)
+    return {"slug": album.slug, "title": album.title}
+
+
+@router.post(
+    "/albums/{slug}/publish",
+    dependencies=[Depends(_verify_admin_key)],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def publish_album(
+    slug: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    await admin_catalog.publish_album(session, slug)
+
+
+@router.post(
+    "/albums/{slug}/unpublish",
+    dependencies=[Depends(_verify_admin_key)],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unpublish_album(
+    slug: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    await admin_catalog.unpublish_album(session, slug)

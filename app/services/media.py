@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import ColumnElement, func
 from sqlalchemy.sql import Select
 
-from app.models import Track
+from app.models import Album, Track
 
 
 def now_utc() -> datetime:
@@ -38,6 +38,23 @@ def resolve_cover_url(_slug: str, stored_url: str | None) -> str | None:
     if not url or "dl.moziketo.ir" in url:
         return None
     return url
+
+
+def published_album_filter() -> ColumnElement[bool]:
+    return (Album.published_at.is_not(None)) & (Album.published_at <= func.now())
+
+
+def extract_wp_album(meta: dict | None) -> tuple[str | None, str | None]:
+    """Return (album_slug, album_title) from WordPress station meta."""
+    if not meta:
+        return None, None
+    title = meta.get("album_name") or meta.get("album") or meta.get("album_title")
+    slug = meta.get("album_slug")
+    if isinstance(title, str):
+        title = title.strip() or None
+    if isinstance(slug, str):
+        slug = slug.strip() or None
+    return slug, title
 
 
 def extract_wp_media(meta: dict | None) -> tuple[str | None, str | None, int | None]:

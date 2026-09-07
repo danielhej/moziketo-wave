@@ -53,6 +53,20 @@ uvicorn app.main:app --reload --port 8000
 | GET | `/api/v1/tags/{slug}/tracks` | Tracks by station tag |
 | GET | `/api/v1/playlists` | Editorial playlists |
 | GET | `/api/v1/playlists/{slug}` | Editorial playlist detail |
+| GET | `/api/v1/albums` | List published albums |
+| GET | `/api/v1/albums/{slug}` | Album detail + tracks |
+| GET | `/api/v1/tracks/{slug}/similar` | Similar tracks |
+
+### Personalization (Bearer required unless noted)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/me/plays/{slug}` | Record play (for history/recommendations) |
+| GET | `/api/v1/me/history/recent` | Recently played (deduplicated) |
+| DELETE | `/api/v1/me/history` | Clear play history |
+| DELETE | `/api/v1/me/history/{slug}` | Remove track from history |
+| GET | `/api/v1/me/recommendations` | Personalized sections |
+| POST | `/api/v1/me/uploads/avatar` | Upload profile avatar → S3 |
 
 ### Auth
 
@@ -60,7 +74,7 @@ uvicorn app.main:app --reload --port 8000
 |--------|------|------|-------------|
 | POST | `/api/v1/auth/register` | — | Create account (+ dev verify token if SMTP off) |
 | POST | `/api/v1/auth/login` | — | Get JWT tokens |
-| PATCH | `/api/v1/auth/me` | Bearer | Update display name |
+| PATCH | `/api/v1/auth/me` | Bearer | Update display name / avatar URL |
 | POST | `/api/v1/auth/change-password` | Bearer | Change password |
 | POST | `/api/v1/auth/set-password` | Bearer | Set password (OAuth-only accounts) |
 | POST | `/api/v1/auth/forgot-password` | — | Request password reset |
@@ -97,6 +111,16 @@ uvicorn app.main:app --reload --port 8000
 | POST | `/api/v1/admin/tracks/{slug}/unpublish` | `X-Admin-Key` | Unpublish track |
 | PATCH | `/api/v1/admin/artists/{slug}` | `X-Admin-Key` | Patch artist |
 | PATCH | `/api/v1/admin/playlists/{slug}` | `X-Admin-Key` | Patch editorial playlist |
+| POST | `/api/v1/admin/albums` | `X-Admin-Key` | Create album |
+| PATCH | `/api/v1/admin/albums/{slug}` | `X-Admin-Key` | Patch album / track order |
+| POST | `/api/v1/admin/albums/{slug}/publish` | `X-Admin-Key` | Publish album |
+| POST | `/api/v1/admin/albums/{slug}/unpublish` | `X-Admin-Key` | Unpublish album |
+| POST | `/api/v1/admin/uploads` | `X-Admin-Key` | Upload cover/audio to S3 |
+| GET | `/api/v1/admin/analytics/overview` | `X-Admin-Key` | Dashboard totals |
+| GET | `/api/v1/admin/analytics/top-tracks` | `X-Admin-Key` | Top tracks by period |
+| GET | `/api/v1/admin/analytics/top-artists` | `X-Admin-Key` | Top artists by period |
+| GET | `/api/v1/admin/analytics/signups` | `X-Admin-Key` | User signups time series |
+| GET | `/api/v1/admin/analytics/plays` | `X-Admin-Key` | Play events time series |
 
 **Scheduled sync:** copy [`deploy/cron/import-catalog.sh`](deploy/cron/import-catalog.sh) to `/opt/moziketo/cron/` and add crontab `0 */6 * * *`.
 
@@ -140,7 +164,9 @@ python scripts/import_wp.py --limit 0             # import all WP stations
 ssh moziketo
 cd /opt/moziketo
 # wave.env + web.env from deploy/*.env.example
+# Set S3_* credentials for uploads; run migrations on deploy (docker entrypoint)
 docker compose up -d
+alembic upgrade head  # if not auto-run by container
 ```
 
 Production URLs:

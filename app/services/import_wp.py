@@ -14,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from app.models import Artist, Track
+from app.models import Album, Artist, Track
 from app.schemas.admin import ImportResult
-from app.services.media import extract_wp_media
+from app.services.media import extract_wp_album, extract_wp_media
 
 STATION_ENDPOINTS = (
     "wp/v2/station",
@@ -62,6 +62,35 @@ async def _fetch_page(
     resp.raise_for_status()
     data = resp.json()
     return data if isinstance(data, list) else []
+
+
+async def _resolve_album(
+    session: AsyncSession,
+    *,
+    artist: Artist,
+    meta: dict[str, Any],
+    published_at: datetime | None,
+) -> Album | None:
+    album_slug, album_title = extract_wp_album(meta)
+    if not album_slug and not album_title:
+        album_slug = f"{artist.slug}-singles"
+        album_title = f"{artist.name} - Singles"
+    elif album_slug and not album_title:
+        album_title = album_slug.replace("-", " ").title()
+    elif album_title and not album_slug:
+        album_slug = _slugify(album_title)
+
+    album = await session.scalar(select(Album).where(Album.slug == album_slug))
+    if album is None:
+        album = Album(
+            slug=album_slug,
+            title=album_title,
+            artist_id=artist.id,
+            published_at=published_at or datetime.now(UTC),
+        )
+        session.add(album)
+        await session.flush()
+    return album
 
 
 async def run_import(
@@ -118,11 +147,18 @@ async def run_import(
                         continue
 
                     track = await session.scalar(select(Track).where(Track.slug == slug))
+                    album = await _resolve_album(
+                        session,
+                        artist=artist,
+                        meta=meta,
+                        published_at=published_at,
+                    )
                     if track is None:
                         track = Track(
                             slug=slug,
                             title=str(title),
                             artist_id=artist.id,
+                            album_id=album.id if album else None,
                             audio_url=wp_audio,
                             cover_url=wp_cover,
                             duration_seconds=wp_duration,
@@ -134,6 +170,8 @@ async def run_import(
                         track.title = str(title)
                         track.artist_id = artist.id
                         track.audio_url = wp_audio
+                        if album:
+                            track.album_id = album.id
                         if wp_cover:
                             track.cover_url = wp_cover
                         if wp_duration is not None:

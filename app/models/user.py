@@ -13,6 +13,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.favorite import Favorite
     from app.models.oauth_account import OAuthAccount
+    from app.models.play_event import PlayEvent
     from app.models.playlist import Playlist
 
 
@@ -27,6 +28,7 @@ class User(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     favorites: Mapped[list[Favorite]] = relationship(back_populates="user", lazy="selectin")
@@ -34,3 +36,4 @@ class User(Base):
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         back_populates="user", lazy="selectin"
     )
+    play_events: Mapped[list[PlayEvent]] = relationship(back_populates="user", lazy="raise")

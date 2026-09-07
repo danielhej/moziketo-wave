@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.album import Album
     from app.models.track import Track
 
 
@@ -26,3 +27,4 @@ class Artist(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tracks: Mapped[list[Track]] = relationship(back_populates="artist", lazy="selectin")
+    albums: Mapped[list[Album]] = relationship(back_populates="artist", lazy="selectin")

@@ -65,6 +65,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-moziketo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moziketo}
       POSTGRES_DB: ${POSTGRES_DB:-moziketo}
+    ports:
+      # localhost-only — for SSH tunnel from laptop (DataGrip, redis-cli)
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -79,6 +82,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: moz-redis
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
