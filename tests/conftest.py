@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -5,12 +7,28 @@ from sqlalchemy.pool import NullPool
 
 from app.api.deps import get_db_session
 from app.core.config import get_settings
+from app.core.redis import connect_redis, disconnect_redis
 from app.main import app
 
 settings = get_settings()
 
+os.environ["DISABLE_CACHE"] = "1"
 
-@pytest.fixture(scope="session")
+
+@pytest.fixture(autouse=True)
+async def redis_connection():
+    from app.core import redis as redis_module
+
+    redis_module._redis = None
+    try:
+        await connect_redis()
+    except Exception:
+        pass
+    yield
+    await disconnect_redis()
+
+
+@pytest.fixture
 async def test_engine():
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     yield engine
@@ -34,3 +52,21 @@ async def client(test_engine):
     ) as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def auth_headers(client: AsyncClient) -> dict[str, str]:
+    import uuid
+
+    email = f"test-{uuid.uuid4().hex[:8]}@moziketo.ir"
+    password = "testpass123"
+    await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password, "display_name": "Test User"},
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}

@@ -27,9 +27,20 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql+asyncpg://moziketo:moziketo@localhost:5432/moziketo
+      REDIS_URL: redis://localhost:6379/0
       CORS_ORIGINS: http://localhost:3000
+      SECRET_KEY: test-secret-key-for-ci
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +85,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64
           tags: |
             ghcr.io/danielhej/moziketo-wave:main
             ghcr.io/danielhej/moziketo-wave:sha-${{ github.sha }}

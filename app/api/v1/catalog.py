@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session
+from app.core.redis import check_redis
 from app.schemas import (
     ArtistDetail,
     ArtistListResponse,
@@ -26,7 +27,11 @@ router = APIRouter()
 )
 async def health(session: AsyncSession = Depends(get_db_session)) -> HealthResponse:
     db_ok = await catalog_service.check_database(session)
-    return HealthResponse(database="ok" if db_ok else "error")
+    redis_ok = await check_redis()
+    return HealthResponse(
+        database="ok" if db_ok else "error",
+        redis="ok" if redis_ok else "error",
+    )
 
 
 @router.get(

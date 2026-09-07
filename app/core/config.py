@@ -15,13 +15,20 @@ class Settings(BaseSettings):
     port: int = 8000
 
     secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
 
     database_url: str = "postgresql+asyncpg://moziketo:moziketo@localhost:5432/moziketo"
     redis_url: str = "redis://localhost:6379/0"
 
+    media_base_url: str = "https://dl.moziketo.ir/music"
+    wp_api_base_url: str = "https://moziketo.ir/wp-json"
+    admin_api_key: str = ""
+
     cors_origins: str = "http://localhost:3000,https://moziketo.ir"
+
+    cache_ttl_seconds: int = 120
 
     @property
     def cors_origin_list(self) -> list[str]:

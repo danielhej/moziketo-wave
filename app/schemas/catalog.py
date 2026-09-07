@@ -8,8 +8,9 @@ class HealthResponse(BaseModel):
 
     status: str = Field(default="ok", examples=["ok"])
     service: str = Field(default="moziketo-wave", examples=["moziketo-wave"])
-    version: str = Field(default="0.1.0", examples=["0.1.0"])
+    version: str = Field(default="0.2.0", examples=["0.2.0"])
     database: str = Field(default="ok", description="PostgreSQL reachability", examples=["ok"])
+    redis: str = Field(default="ok", description="Redis reachability", examples=["ok"])
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

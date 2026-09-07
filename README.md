@@ -10,7 +10,7 @@
 
 ## Stack
 
-FastAPI · PostgreSQL 16 · Redis · SQLAlchemy async · Alembic · Docker
+FastAPI · PostgreSQL 16 · Redis · SQLAlchemy async · Alembic · JWT · Docker
 
 ## Quick start
 
@@ -28,20 +28,49 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 - API: http://localhost:8000
-- Docs: http://localhost:8000/docs
+- Swagger: http://localhost:8000/docs
 - Health: http://localhost:8000/api/v1/health
 
 ## API v1
 
+### Catalog (public)
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/health` | Health + DB status |
-| GET | `/api/v1/tracks` | List tracks (paginated) |
+| GET | `/api/v1/health` | Health + DB + Redis status |
+| GET | `/api/v1/tracks` | List published tracks (paginated) |
 | GET | `/api/v1/tracks/{slug}` | Track detail |
+| GET | `/api/v1/tracks/{slug}/stream` | 302 redirect to CDN audio |
+| GET | `/api/v1/tracks/{slug}/download` | 302 download redirect |
 | GET | `/api/v1/artists` | List artists |
-| GET | `/api/v1/artists/{slug}` | Artist hub + tracks |
+| GET | `/api/v1/artists/{slug}` | Artist hub + published tracks |
+| GET | `/api/v1/search?q=` | Search tracks & artists |
 
-OpenAPI: `/openapi.json`
+### Auth
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/v1/auth/register` | — | Create account |
+| POST | `/api/v1/auth/login` | — | Get JWT tokens |
+| POST | `/api/v1/auth/refresh` | refresh token | Rotate tokens |
+| GET | `/api/v1/auth/me` | Bearer | Current user |
+| POST | `/api/v1/auth/logout` | refresh token | Revoke refresh token |
+
+### Favorites (Bearer required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/me/favorites` | List favorite tracks |
+| POST | `/api/v1/me/favorites/{slug}` | Add favorite |
+| DELETE | `/api/v1/me/favorites/{slug}` | Remove favorite |
+
+### Admin
+
+| Method | Path | Header | Description |
+|--------|------|--------|-------------|
+| POST | `/api/v1/admin/import` | `X-Admin-Key` | Import from moziketo.ir WP |
+
+OpenAPI: `/openapi.json` · Swagger: `/docs`
 
 ## Database
 
@@ -49,13 +78,14 @@ OpenAPI: `/openapi.json`
 alembic revision --autogenerate -m "description"  # new migration
 alembic upgrade head
 python scripts/seed.py                            # demo data
+python scripts/import_wp.py --limit 50            # import from WordPress
 ```
 
 ## DevOps
 
 ### CI / Deploy / Release
 
-- **CI** — ruff, migrate, seed, pytest, push `ghcr.io/danielhej/moziketo-wave`
+- **CI** — ruff, migrate, seed, pytest (+ Redis), push `ghcr.io/danielhej/moziketo-wave`
 - **Deploy** — full stack to moziketo-hand (wave + web + postgres + nginx)
 - **Release** — tag `v*.*.*` → GitHub Release + deploy
 
@@ -76,10 +106,10 @@ cd /opt/moziketo
 docker compose up -d
 ```
 
-Nginx routes:
-- `/` → Next.js
-- `/api/` → FastAPI
-- `/docs` → OpenAPI UI
+Production URLs:
+- API: https://api.moziketo.ir
+- PWA: https://pwa.moziketo.ir
+- Media CDN: https://dl.moziketo.ir/music/
 
 ## Development
 
