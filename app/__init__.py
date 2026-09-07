@@ -1,0 +1,1 @@
+"""Moziketo Wave — FastAPI backend."""
