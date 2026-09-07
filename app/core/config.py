@@ -46,6 +46,18 @@ class Settings(BaseSettings):
     # Password reset
     password_reset_ttl_seconds: int = 3600
 
+    # Email (SMTP)
+    email_enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@moziketo.ir"
+    smtp_use_tls: bool = True
+    frontend_verify_url: str = "https://pwa.moziketo.ir/auth/verify-email"
+    frontend_reset_url: str = "https://pwa.moziketo.ir/auth/reset-password"
+    email_verify_ttl_seconds: int = 86400
+
     # OAuth
     oauth_frontend_callback_url: str = "https://pwa.moziketo.ir/auth/callback"
     oauth_api_base_url: str = "https://api.moziketo.ir/api/v1"
@@ -57,6 +69,7 @@ class Settings(BaseSettings):
     apple_team_id: str = ""
     apple_key_id: str = ""
     apple_private_key: str = ""
+    oauth_apple_enabled: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

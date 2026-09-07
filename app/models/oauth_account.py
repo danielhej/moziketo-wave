@@ -19,7 +19,8 @@ class OAuthProvider:
     GITHUB = "github"
     APPLE = "apple"
 
-    ALL = (GOOGLE, GITHUB, APPLE)
+    ENABLED = (GOOGLE, GITHUB)
+    ALL = ENABLED  # Apple disabled until Sign in with Apple is configured
 
 
 class OAuthAccount(Base):

@@ -12,6 +12,7 @@ from app.core.redis import connect_redis, get_redis
 from app.core.security import hash_password
 from app.models import User
 from app.schemas.auth import ForgotPasswordResponse, ResetPasswordRequest
+from app.services.email import email_is_configured, send_email
 
 
 def _token_key(token: str) -> str:
@@ -20,7 +21,9 @@ def _token_key(token: str) -> str:
 
 def _expose_reset_token() -> bool:
     settings = get_settings()
-    return settings.app_env != "production" or settings.debug
+    return not email_is_configured() and (
+        settings.app_env != "production" or settings.debug
+    )
 
 
 async def request_password_reset(
@@ -36,13 +39,26 @@ async def request_password_reset(
     redis = get_redis()
     await redis.set(_token_key(token), str(user.id), ex=settings.password_reset_ttl_seconds)
 
-    if not _expose_reset_token():
+    reset_url = f"{settings.frontend_reset_url.rstrip('/')}?token={token}"
+    if email_is_configured():
+        await send_email(
+            to=user.email,
+            subject="Reset your Moziketo password",
+            body=(
+                f"سلام {user.display_name},\n\n"
+                f"برای تغییر رمز این لینک را باز کنید:\n{reset_url}\n\n"
+                f"اگر درخواست نداده‌اید این ایمیل را نادیده بگیرید."
+            ),
+        )
         return None
 
-    return ForgotPasswordResponse(
-        reset_token=token,
-        expires_in=settings.password_reset_ttl_seconds,
-    )
+    if _expose_reset_token():
+        return ForgotPasswordResponse(
+            reset_token=token,
+            expires_in=settings.password_reset_ttl_seconds,
+        )
+
+    return None
 
 
 async def reset_password(session: AsyncSession, data: ResetPasswordRequest) -> None:

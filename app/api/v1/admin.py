@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db_session
 from app.core.config import get_settings
 from app.schemas.admin import ImportResult
-from app.services import import_catalog, import_wp
+from app.schemas.admin_catalog import AdminArtistPatch, AdminPlaylistPatch, AdminTrackPatch
+from app.services import admin_catalog, import_catalog, import_wp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -36,3 +37,69 @@ async def trigger_json_import(
     session: AsyncSession = Depends(get_db_session),
 ) -> ImportResult:
     return await import_catalog.import_catalog_payload(session, payload)
+
+
+@router.patch(
+    "/tracks/{slug}",
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Patch track metadata or publish state",
+)
+async def patch_track(
+    slug: str,
+    payload: AdminTrackPatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    track = await admin_catalog.patch_track(session, slug, payload)
+    return {"slug": track.slug, "title": track.title}
+
+
+@router.post(
+    "/tracks/{slug}/publish",
+    dependencies=[Depends(_verify_admin_key)],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def publish_track(
+    slug: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    await admin_catalog.publish_track(session, slug)
+
+
+@router.post(
+    "/tracks/{slug}/unpublish",
+    dependencies=[Depends(_verify_admin_key)],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unpublish_track(
+    slug: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    await admin_catalog.unpublish_track(session, slug)
+
+
+@router.patch(
+    "/artists/{slug}",
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Patch artist metadata",
+)
+async def patch_artist(
+    slug: str,
+    payload: AdminArtistPatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    artist = await admin_catalog.patch_artist(session, slug, payload)
+    return {"slug": artist.slug, "name": artist.name}
+
+
+@router.patch(
+    "/playlists/{slug}",
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Patch editorial playlist",
+)
+async def patch_playlist(
+    slug: str,
+    payload: AdminPlaylistPatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    playlist = await admin_catalog.patch_playlist(session, slug, payload)
+    return {"slug": playlist.slug, "title": playlist.title}

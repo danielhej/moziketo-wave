@@ -31,6 +31,8 @@ async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
 
 
 async def cache_delete_pattern(pattern: str) -> None:
+    if os.getenv("DISABLE_CACHE"):
+        return
     try:
         redis = get_redis()
     except RuntimeError:

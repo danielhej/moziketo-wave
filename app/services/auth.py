@@ -2,6 +2,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.redis import get_redis
@@ -13,19 +14,53 @@ from app.core.security import (
     verify_password,
 )
 from app.models import User
-from app.schemas.auth import RegisterRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    RegisterRequest,
+    RegisterResponse,
+    SetPasswordRequest,
+    TokenResponse,
+    UpdateProfileRequest,
+    UserResponse,
+)
+from app.services.email_verification import send_verification_email
 
 
 def _user_response(user: User) -> UserResponse:
+    providers = [account.provider for account in getattr(user, "oauth_accounts", [])]
     return UserResponse(
         id=str(user.id),
         email=user.email,
         display_name=user.display_name,
         is_active=user.is_active,
+        email_verified=user.email_verified_at is not None,
+        has_password=user.password_hash is not None,
+        oauth_providers=providers,
     )
 
 
-async def register_user(session: AsyncSession, data: RegisterRequest) -> UserResponse:
+async def _load_user_with_oauth(session: AsyncSession, user_id: str) -> User:
+    from uuid import UUID
+
+    try:
+        uid = UUID(user_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        ) from exc
+
+    user = await session.scalar(
+        select(User)
+        .where(User.id == uid)
+        .options(selectinload(User.oauth_accounts))
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
+
+async def register_user(session: AsyncSession, data: RegisterRequest) -> RegisterResponse:
     existing = await session.scalar(select(User).where(User.email == data.email.lower()))
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -37,8 +72,14 @@ async def register_user(session: AsyncSession, data: RegisterRequest) -> UserRes
     )
     session.add(user)
     await session.commit()
-    await session.refresh(user)
-    return _user_response(user)
+    await session.refresh(user, ["oauth_accounts"])
+
+    verify = await send_verification_email(user)
+    return RegisterResponse(
+        user=_user_response(user),
+        verify_token=verify.verify_token if verify else None,
+        verify_expires_in=verify.expires_in if verify else None,
+    )
 
 
 async def login_user(session: AsyncSession, email: str, password: str) -> TokenResponse:
@@ -117,6 +158,29 @@ async def logout_user(refresh_token: str) -> None:
 
 
 async def get_user_by_id(session: AsyncSession, user_id: str) -> User:
+    return await _load_user_with_oauth(session, user_id)
+
+
+async def get_current_user_response(session: AsyncSession, user_id: str) -> UserResponse:
+    user = await _load_user_with_oauth(session, user_id)
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
+    return _user_response(user)
+
+
+async def update_profile(
+    session: AsyncSession, user_id: str, data: UpdateProfileRequest
+) -> UserResponse:
+    user = await _load_user_with_oauth(session, user_id)
+    user.display_name = data.display_name
+    await session.commit()
+    await session.refresh(user, ["oauth_accounts"])
+    return _user_response(user)
+
+
+async def change_password(
+    session: AsyncSession, user_id: str, data: ChangePasswordRequest
+) -> None:
     from uuid import UUID
 
     try:
@@ -130,11 +194,38 @@ async def get_user_by_id(session: AsyncSession, user_id: str) -> User:
     user = await session.scalar(select(User).where(User.id == uid))
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
+    if user.password_hash is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth-only account — use set-password first",
+        )
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    user.password_hash = hash_password(data.new_password)
+    await session.commit()
 
 
-async def get_current_user_response(session: AsyncSession, user_id: str) -> UserResponse:
-    user = await get_user_by_id(session, user_id)
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
-    return _user_response(user)
+async def set_password(session: AsyncSession, user_id: str, data: SetPasswordRequest) -> None:
+    from uuid import UUID
+
+    try:
+        uid = UUID(user_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        ) from exc
+
+    user = await session.scalar(select(User).where(User.id == uid))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if user.password_hash is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Password already set — use change-password",
+        )
+    user.password_hash = hash_password(data.new_password)
+    await session.commit()

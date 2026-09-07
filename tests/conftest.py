@@ -9,6 +9,7 @@ os.environ["DISABLE_CACHE"] = "1"
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("DEBUG", "true")
 os.environ.setdefault("AUTH_RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
 
 from app.api.deps import get_db_session
 from app.core.config import get_settings

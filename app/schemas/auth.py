@@ -1,8 +1,9 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-OAuthProviderName = Literal["google", "apple", "github"]
+OAuthProviderName = Literal["google", "github"]
 
 
 class RegisterRequest(BaseModel):
@@ -23,6 +24,17 @@ class RegisterRequest(BaseModel):
     email: EmailStr = Field(description="Account email (unique, lowercased on save)")
     password: str = Field(min_length=8, max_length=128, description="Minimum 8 characters")
     display_name: str = Field(min_length=1, max_length=200, description="Display name in UI")
+
+
+class RegisterResponse(BaseModel):
+    """Registration result — may include dev-only verification token."""
+
+    user: "UserResponse"
+    verify_token: str | None = Field(
+        default=None,
+        description="Dev/stage only when SMTP is disabled",
+    )
+    verify_expires_in: int | None = None
 
 
 class LoginRequest(BaseModel):
@@ -74,6 +86,11 @@ class TokenResponse(BaseModel):
     token_type: str = Field(default="bearer", examples=["bearer"])
 
 
+class OAuthAccountSummary(BaseModel):
+    provider: str
+    linked_at: datetime
+
+
 class UserResponse(BaseModel):
     """Public user profile."""
 
@@ -85,6 +102,9 @@ class UserResponse(BaseModel):
                     "email": "user@moziketo.ir",
                     "display_name": "کاربر موزیکتو",
                     "is_active": True,
+                    "email_verified": False,
+                    "has_password": True,
+                    "oauth_providers": [],
                 }
             ]
         }
@@ -94,6 +114,22 @@ class UserResponse(BaseModel):
     email: str
     display_name: str
     is_active: bool = Field(description="Inactive users cannot log in")
+    email_verified: bool = Field(description="Soft verification flag — login not blocked")
+    has_password: bool = Field(description="False for OAuth-only accounts")
+    oauth_providers: list[str] = Field(default_factory=list)
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=200)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class SetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -107,7 +143,7 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ForgotPasswordResponse(BaseModel):
-    """Dev/stage only — production returns 204 with no body (email delivery TBD)."""
+    """Dev/stage only — production returns 204 with no body when email is sent."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -142,6 +178,13 @@ class ResetPasswordRequest(BaseModel):
 
     token: str = Field(min_length=16, description="Reset token from forgot-password")
     new_password: str = Field(min_length=8, max_length=128, description="New account password")
+
+
+class VerifyEmailRequestResponse(BaseModel):
+    """Dev/stage only — production sends email with no token in response."""
+
+    verify_token: str
+    expires_in: int
 
 
 class OAuthExchangeRequest(BaseModel):

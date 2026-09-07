@@ -15,6 +15,9 @@ COPY app ./app
 COPY alembic ./alembic
 COPY scripts ./scripts
 
+# macOS tar can inject AppleDouble (._*) files that break Alembic
+RUN find /app -name '._*' -delete
+
 RUN pip install --upgrade pip && pip install . \
     && chmod +x scripts/docker-entrypoint.sh
 

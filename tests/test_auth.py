@@ -14,7 +14,10 @@ async def test_register_and_login(client: AsyncClient) -> None:
         },
     )
     assert reg.status_code == 201
-    assert reg.json()["email"] == email
+    body = reg.json()
+    assert body["user"]["email"] == email
+    assert body["user"]["email_verified"] is False
+    assert body["user"]["has_password"] is True
 
     login = await client.post(
         "/api/v1/auth/login",
@@ -42,7 +45,11 @@ async def test_me_requires_auth(client: AsyncClient) -> None:
 async def test_me_with_token(client: AsyncClient, auth_headers: dict[str, str]) -> None:
     response = await client.get("/api/v1/auth/me", headers=auth_headers)
     assert response.status_code == 200
-    assert "@moziketo.ir" in response.json()["email"]
+    body = response.json()
+    assert "@moziketo.ir" in body["email"]
+    assert "email_verified" in body
+    assert "has_password" in body
+    assert "oauth_providers" in body
 
 
 async def test_refresh_token(client: AsyncClient) -> None:

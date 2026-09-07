@@ -78,13 +78,15 @@ async def run_import(
 
         page = 1
         imported = 0
-        while imported < limit:
+        unlimited = limit == 0
+        effective_limit = limit if not unlimited else 10**9
+        while imported < effective_limit:
             items = await _fetch_page(client, settings.wp_api_base_url, endpoint, page)
             if not items:
                 break
 
             for item in items:
-                if imported >= limit:
+                if not unlimited and imported >= limit:
                     break
                 try:
                     title = item.get("title", {})

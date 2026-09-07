@@ -38,41 +38,74 @@ uvicorn app.main:app --reload --port 8000
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/health` | Health + DB + Redis status |
-| GET | `/api/v1/tracks` | List published tracks (paginated) |
+| GET | `/api/v1/browse` | Home sections (popular, latest, new) |
+| GET | `/api/v1/tracks` | List tracks (`sort`, `genre`, `mood`, `tag` filters) |
 | GET | `/api/v1/tracks/{slug}` | Track detail |
 | GET | `/api/v1/tracks/{slug}/stream` | 302 redirect to CDN audio |
 | GET | `/api/v1/tracks/{slug}/download` | 302 download redirect |
 | GET | `/api/v1/artists` | List artists |
 | GET | `/api/v1/artists/{slug}` | Artist hub + published tracks |
 | GET | `/api/v1/search?q=` | Search tracks & artists |
+| GET | `/api/v1/genres` | List genres |
+| GET | `/api/v1/genres/{slug}/tracks` | Tracks by genre |
+| GET | `/api/v1/moods` | List moods |
+| GET | `/api/v1/moods/{slug}/tracks` | Tracks by mood |
+| GET | `/api/v1/tags/{slug}/tracks` | Tracks by station tag |
+| GET | `/api/v1/playlists` | Editorial playlists |
+| GET | `/api/v1/playlists/{slug}` | Editorial playlist detail |
 
 ### Auth
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/v1/auth/register` | — | Create account |
+| POST | `/api/v1/auth/register` | — | Create account (+ dev verify token if SMTP off) |
 | POST | `/api/v1/auth/login` | — | Get JWT tokens |
+| PATCH | `/api/v1/auth/me` | Bearer | Update display name |
+| POST | `/api/v1/auth/change-password` | Bearer | Change password |
+| POST | `/api/v1/auth/set-password` | Bearer | Set password (OAuth-only accounts) |
 | POST | `/api/v1/auth/forgot-password` | — | Request password reset |
 | POST | `/api/v1/auth/reset-password` | — | Reset password with token |
-| GET | `/api/v1/auth/oauth/{provider}` | — | OAuth redirect (google/apple/github) |
-| POST | `/api/v1/auth/oauth/exchange` | — | Exchange one-time OAuth code for JWT |
+| POST | `/api/v1/auth/verify-email/request` | Bearer | Resend verification email |
+| GET | `/api/v1/auth/verify-email/confirm` | — | Confirm email (`?token=`) |
+| GET | `/api/v1/auth/oauth/{provider}` | — | OAuth redirect (google/github) |
+| POST | `/api/v1/auth/oauth/exchange` | — | Exchange OAuth code for JWT |
+| GET | `/api/v1/auth/me/oauth` | Bearer | List linked OAuth providers |
+| DELETE | `/api/v1/auth/me/oauth/{provider}` | Bearer | Unlink OAuth provider |
 | POST | `/api/v1/auth/refresh` | refresh token | Rotate tokens |
 | GET | `/api/v1/auth/me` | Bearer | Current user |
 | POST | `/api/v1/auth/logout` | refresh token | Revoke refresh token |
 
-### Favorites (Bearer required)
+**Apple Sign In** is disabled by default (`OAUTH_APPLE_ENABLED=false`). Enable when Apple credentials are configured.
+
+### Favorites & playlists (Bearer required)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/me/favorites` | List favorite tracks |
 | POST | `/api/v1/me/favorites/{slug}` | Add favorite |
 | DELETE | `/api/v1/me/favorites/{slug}` | Remove favorite |
+| GET/POST | `/api/v1/me/playlists` | User playlists CRUD |
 
 ### Admin
 
 | Method | Path | Header | Description |
 |--------|------|--------|-------------|
-| POST | `/api/v1/admin/import` | `X-Admin-Key` | Import from moziketo.ir WP |
+| POST | `/api/v1/admin/import` | `X-Admin-Key` | Import from WP (`limit=0` = all pages) |
+| POST | `/api/v1/admin/import-json` | `X-Admin-Key` | Import enriched JSON export |
+| PATCH | `/api/v1/admin/tracks/{slug}` | `X-Admin-Key` | Patch track / publish state |
+| POST | `/api/v1/admin/tracks/{slug}/publish` | `X-Admin-Key` | Publish track |
+| POST | `/api/v1/admin/tracks/{slug}/unpublish` | `X-Admin-Key` | Unpublish track |
+| PATCH | `/api/v1/admin/artists/{slug}` | `X-Admin-Key` | Patch artist |
+| PATCH | `/api/v1/admin/playlists/{slug}` | `X-Admin-Key` | Patch editorial playlist |
+
+**Scheduled sync:** copy [`deploy/cron/import-catalog.sh`](deploy/cron/import-catalog.sh) to `/opt/moziketo/cron/` and add crontab `0 */6 * * *`.
+
+**OAuth production setup:**
+
+```bash
+source ~/.cursor/skills/moziketo-access/oauth.env
+./scripts/configure_oauth_production.sh
+```
 
 OpenAPI: `/openapi.json` · Swagger: `/docs`
 
@@ -82,7 +115,7 @@ OpenAPI: `/openapi.json` · Swagger: `/docs`
 alembic revision --autogenerate -m "description"  # new migration
 alembic upgrade head
 python scripts/seed.py                            # demo data
-python scripts/import_wp.py --limit 50            # import from WordPress
+python scripts/import_wp.py --limit 0             # import all WP stations
 ```
 
 ## DevOps

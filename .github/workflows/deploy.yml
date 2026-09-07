@@ -60,11 +60,15 @@ jobs:
           HOST="${{ secrets.DEPLOY_HOST }}"
           USER="${{ secrets.DEPLOY_USER }}"
           ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" \
-            "mkdir -p /opt/moziketo/nginx/conf.d /opt/moziketo/backups"
+            "mkdir -p /opt/moziketo/nginx/conf.d /opt/moziketo/backups /opt/moziketo/cron"
           scp deploy/docker-compose.prod.yml "${USER}@${HOST}:/opt/moziketo/docker-compose.yml"
           scp deploy/nginx/conf.d/*.conf "${USER}@${HOST}:/opt/moziketo/nginx/conf.d/"
           scp deploy/wave.env.example "${USER}@${HOST}:/opt/moziketo/wave.env.example"
           scp deploy/web.env.example "${USER}@${HOST}:/opt/moziketo/web.env.example"
+          scp deploy/postfix.env.example "${USER}@${HOST}:/opt/moziketo/postfix.env.example"
+          scp deploy/cron/import-catalog.sh "${USER}@${HOST}:/opt/moziketo/cron/import-catalog.sh"
+          ssh "${USER}@${HOST}" "chmod +x /opt/moziketo/cron/import-catalog.sh"
+          ssh "${USER}@${HOST}" "test -f /opt/moziketo/postfix.env || cp /opt/moziketo/postfix.env.example /opt/moziketo/postfix.env"
 
       - name: Transfer wave image and deploy stack
         run: |

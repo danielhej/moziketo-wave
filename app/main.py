@@ -18,7 +18,8 @@ OPENAPI_TAGS = [
         "name": "auth",
         "description": (
             "Authentication: register, login, JWT refresh, password reset, and OAuth "
-            "(Google, Apple, GitHub). Protected routes use **BearerAuth**."
+            "(Google, GitHub). Apple Sign In is disabled until configured. "
+            "Protected routes use **BearerAuth**."
         ),
     },
     {
@@ -59,17 +60,22 @@ def create_app() -> FastAPI:
             "- ReDoc: [`/redoc`](/redoc)\n\n"
             "## Auth flows\n\n"
             "### Email/password\n"
-            "1. `POST /auth/register` → create account\n"
+            "1. `POST /auth/register` → create account (+ optional verify token in dev)\n"
             "2. `POST /auth/login` → `{ access_token, refresh_token }`\n"
-            "3. Use `Authorization: Bearer <access_token>` on protected routes\n"
-            "4. `POST /auth/refresh` to rotate tokens\n\n"
+            "3. `PATCH /auth/me`, `POST /auth/change-password`, `POST /auth/set-password`\n"
+            "4. `GET /auth/verify-email/confirm?token=` — soft verification (login not blocked)\n"
+            "5. Use `Authorization: Bearer <access_token>` on protected routes\n"
+            "6. `POST /auth/refresh` to rotate tokens\n\n"
             "### Password reset\n"
-            "1. `POST /auth/forgot-password` — production returns `204` (no body)\n"
+            "1. `POST /auth/forgot-password` — sends email when SMTP configured, else dev token\n"
             "2. `POST /auth/reset-password` with token + new password\n\n"
-            "### OAuth (Google / Apple / GitHub)\n"
+            "### OAuth (Google / GitHub)\n"
             "1. Browser: `GET /auth/oauth/{provider}`\n"
             "2. Frontend receives redirect with `?code=` at `/auth/callback`\n"
-            "3. `POST /auth/oauth/exchange` → JWT tokens\n\n"
+            "3. `POST /auth/oauth/exchange` → JWT tokens\n"
+            "4. `GET /auth/me/oauth`, `DELETE /auth/me/oauth/{provider}` to manage links\n\n"
+            "### Admin\n"
+            "Catalog import and ops under `/admin/*` with **X-Admin-Key**.\n\n"
             "Rate limits apply on login, register, and forgot-password (429 + Retry-After)."
         ),
         version="0.2.0",

@@ -15,6 +15,14 @@ async def test_oauth_unknown_provider(client: AsyncClient) -> None:
     assert response.status_code == 422
 
 
+async def test_oauth_apple_disabled(client: AsyncClient) -> None:
+    response = await client.get(
+        "/api/v1/auth/oauth/apple",
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+
+
 async def test_oauth_unconfigured_provider(client: AsyncClient) -> None:
     response = await client.get(
         f"/api/v1/auth/oauth/{OAuthProvider.GOOGLE}",
@@ -46,7 +54,7 @@ async def test_oauth_exchange_success(client: AsyncClient) -> None:
         "/api/v1/auth/register",
         json={"email": email, "password": "securepass1", "display_name": "OAuth User"},
     )
-    user_id = reg.json()["id"]
+    user_id = reg.json()["user"]["id"]
 
     await connect_redis()
     redis = get_redis()

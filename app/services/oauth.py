@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -30,7 +31,18 @@ class OAuthProfile:
     display_name: str
 
 
+def _ensure_provider_allowed(settings: Settings, provider: str) -> None:
+    if provider == OAuthProvider.APPLE and not settings.oauth_apple_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Apple Sign In is disabled",
+        )
+    if provider not in OAuthProvider.ENABLED:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown OAuth provider")
+
+
 def _provider_config(settings: Settings, provider: str) -> dict[str, Any]:
+    _ensure_provider_allowed(settings, provider)
     if provider == OAuthProvider.GOOGLE:
         if not settings.google_client_id or not settings.google_client_secret:
             raise HTTPException(
@@ -134,10 +146,8 @@ async def _pop_oauth_code(code: str) -> str | None:
 
 
 async def build_authorize_redirect(provider: str) -> str:
-    if provider not in OAuthProvider.ALL:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown OAuth provider")
-
     settings = get_settings()
+    _ensure_provider_allowed(settings, provider)
     cfg = _provider_config(settings, provider)
     state = secrets.token_urlsafe(32)
     await _store_state(state, provider)
@@ -260,6 +270,9 @@ async def _upsert_oauth_user(
     elif not user.display_name and profile.display_name:
         user.display_name = profile.display_name
 
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(UTC)
+
     existing_for_user = await session.scalar(
         select(OAuthAccount).where(
             OAuthAccount.user_id == user.id,
@@ -286,14 +299,12 @@ async def _upsert_oauth_user(
 async def handle_oauth_callback(
     session: AsyncSession, provider: str, *, code: str, state: str
 ) -> str:
-    if provider not in OAuthProvider.ALL:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown OAuth provider")
-
+    settings = get_settings()
+    _ensure_provider_allowed(settings, provider)
     stored_provider = await _pop_state(state)
     if stored_provider != provider:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
 
-    settings = get_settings()
     cfg = _provider_config(settings, provider)
     client = AsyncOAuth2Client(
         client_id=cfg["client_id"],
