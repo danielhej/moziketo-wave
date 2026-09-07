@@ -1,6 +1,6 @@
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,6 +9,7 @@ from app.schemas import (
     ArtistDetail,
     ArtistListResponse,
     ArtistSummary,
+    SearchResponse,
     TrackDetail,
     TrackListResponse,
     TrackSummary,
@@ -134,3 +135,99 @@ async def check_database(session: AsyncSession) -> bool:
         return True
     except Exception:
         return False
+
+
+async def search_catalog(
+    session: AsyncSession,
+    *,
+    q: str,
+    limit: int = 24,
+) -> SearchResponse:
+    query = q.strip()
+    if len(query) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Search query must be at least 2 characters",
+        )
+
+    limit = min(max(limit, 1), 50)
+    pattern = f"%{query}%"
+
+    track_total = await session.scalar(
+        select(func.count())
+        .select_from(Track)
+        .join(Artist)
+        .where(
+            or_(
+                Track.title.ilike(pattern),
+                Track.slug.ilike(pattern),
+                Artist.name.ilike(pattern),
+                Artist.name_en.ilike(pattern),
+            )
+        )
+    ) or 0
+
+    track_result = await session.execute(
+        select(Track)
+        .options(selectinload(Track.artist))
+        .join(Artist)
+        .where(
+            or_(
+                Track.title.ilike(pattern),
+                Track.slug.ilike(pattern),
+                Artist.name.ilike(pattern),
+                Artist.name_en.ilike(pattern),
+            )
+        )
+        .order_by(Track.created_at.desc())
+        .limit(limit)
+    )
+    tracks = track_result.scalars().unique().all()
+
+    artist_total = await session.scalar(
+        select(func.count())
+        .select_from(Artist)
+        .where(
+            or_(
+                Artist.name.ilike(pattern),
+                Artist.name_en.ilike(pattern),
+                Artist.slug.ilike(pattern),
+            )
+        )
+    ) or 0
+
+    track_counts = (
+        select(Track.artist_id, func.count().label("cnt")).group_by(Track.artist_id).subquery()
+    )
+    artist_result = await session.execute(
+        select(Artist, func.coalesce(track_counts.c.cnt, 0))
+        .outerjoin(track_counts, Artist.id == track_counts.c.artist_id)
+        .where(
+            or_(
+                Artist.name.ilike(pattern),
+                Artist.name_en.ilike(pattern),
+                Artist.slug.ilike(pattern),
+            )
+        )
+        .order_by(Artist.name)
+        .limit(limit)
+    )
+    artist_rows = artist_result.all()
+
+    return SearchResponse(
+        query=query,
+        tracks=[_track_summary(t) for t in tracks],
+        artists=[
+            ArtistSummary(
+                id=str(artist.id),
+                slug=artist.slug,
+                name=artist.name,
+                name_en=artist.name_en,
+                cover_url=artist.cover_url,
+                track_count=int(count),
+            )
+            for artist, count in artist_rows
+        ],
+        track_total=track_total,
+        artist_total=artist_total,
+    )

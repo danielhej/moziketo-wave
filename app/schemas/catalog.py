@@ -4,33 +4,35 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
-    status: str = "ok"
-    service: str = "moziketo-wave"
-    version: str = "0.1.0"
-    database: str = "ok"
+    """Service health probe — includes database connectivity."""
+
+    status: str = Field(default="ok", examples=["ok"])
+    service: str = Field(default="moziketo-wave", examples=["moziketo-wave"])
+    version: str = Field(default="0.1.0", examples=["0.1.0"])
+    database: str = Field(default="ok", description="PostgreSQL reachability", examples=["ok"])
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class TrackSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    slug: str
-    title: str
-    artist_name: str
-    duration_seconds: int | None = None
+    id: str = Field(description="UUID")
+    slug: str = Field(description="URL-safe identifier", examples=["bipolar"])
+    title: str = Field(description="Track title in Persian", examples=["دوسان"])
+    artist_name: str = Field(examples=["محسن چاوشی"])
+    duration_seconds: int | None = Field(default=None, examples=[245])
     cover_url: str | None = None
 
 
 class TrackDetail(TrackSummary):
-    artist_slug: str
-    audio_url: str | None = None
+    artist_slug: str = Field(examples=["mohsen-chavoshi"])
+    audio_url: str | None = Field(default=None, description="Direct audio file URL")
     description: str | None = None
 
 
 class TrackListResponse(BaseModel):
     items: list[TrackSummary]
-    total: int
+    total: int = Field(description="Total matching tracks")
     page: int
     page_size: int
 
@@ -39,11 +41,11 @@ class ArtistSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    slug: str
-    name: str
-    name_en: str | None = None
+    slug: str = Field(examples=["mohsen-chavoshi"])
+    name: str = Field(examples=["محسن چاوشی"])
+    name_en: str | None = Field(default=None, examples=["Mohsen Chavoshi"])
     cover_url: str | None = None
-    track_count: int = 0
+    track_count: int = Field(default=0, ge=0)
 
 
 class ArtistDetail(ArtistSummary):
@@ -56,3 +58,13 @@ class ArtistListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class SearchResponse(BaseModel):
+    """Combined search results across tracks and artists."""
+
+    query: str = Field(description="Normalized search query")
+    tracks: list[TrackSummary] = Field(default_factory=list)
+    artists: list[ArtistSummary] = Field(default_factory=list)
+    track_total: int = Field(ge=0)
+    artist_total: int = Field(ge=0)
