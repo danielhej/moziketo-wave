@@ -44,9 +44,23 @@ async def health(session: AsyncSession = Depends(get_db_session)) -> HealthRespo
 async def list_tracks(
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
     page_size: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 24,
+    sort: Annotated[str, Query(description="Sort order: latest or popular")] = "latest",
+    genre: Annotated[str | None, Query(description="Filter by genre slug")] = None,
+    mood: Annotated[str | None, Query(description="Filter by mood slug")] = None,
+    tag: Annotated[str | None, Query(description="Filter by station tag slug")] = None,
+    artist: Annotated[str | None, Query(description="Filter by artist slug")] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> TrackListResponse:
-    return await catalog_service.list_tracks(session, page=page, page_size=page_size)
+    return await catalog_service.list_tracks(
+        session,
+        page=page,
+        page_size=page_size,
+        sort=sort,
+        genre=genre,
+        mood=mood,
+        tag=tag,
+        artist=artist,
+    )
 
 
 @router.get(

@@ -13,9 +13,10 @@ from app.core.redis import connect_redis, disconnect_redis
 
 OPENAPI_TAGS = [
     {"name": "system", "description": "Health checks and service metadata."},
-    {"name": "catalog", "description": "Artists, tracks, and catalog search for موزیکتو."},
+    {"name": "catalog", "description": "Artists, tracks, browse, taxonomy, and search."},
     {"name": "auth", "description": "Registration, login, and JWT token management."},
     {"name": "favorites", "description": "User favorite tracks (requires Bearer token)."},
+    {"name": "playlists", "description": "Editorial and user playlists."},
     {"name": "playback", "description": "Stream and download redirects to CDN."},
     {"name": "admin", "description": "Admin operations (requires X-Admin-Key header)."},
 ]

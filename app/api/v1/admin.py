@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db_session
 from app.core.config import get_settings
 from app.schemas.admin import ImportResult
-from app.services import import_wp
+from app.services import import_catalog, import_wp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -23,3 +23,16 @@ async def trigger_import(
     limit: int = 100,
 ) -> ImportResult:
     return await import_wp.run_import(session, limit=limit)
+
+
+@router.post(
+    "/import-json",
+    response_model=ImportResult,
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Import catalog from WP JSON export body",
+)
+async def trigger_json_import(
+    payload: dict[str, Any] | list[Any],
+    session: AsyncSession = Depends(get_db_session),
+) -> ImportResult:
+    return await import_catalog.import_catalog_payload(session, payload)

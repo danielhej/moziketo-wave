@@ -12,6 +12,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.favorite import Favorite
+    from app.models.playlist import Playlist
 
 
 class User(Base):
@@ -25,3 +26,4 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     favorites: Mapped[list[Favorite]] = relationship(back_populates="user", lazy="selectin")
+    playlists: Mapped[list[Playlist]] = relationship(back_populates="user", lazy="selectin")

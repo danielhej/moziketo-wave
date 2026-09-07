@@ -23,6 +23,7 @@ class TrackSummary(BaseModel):
     artist_name: str = Field(examples=["محسن چاوشی"])
     duration_seconds: int | None = Field(default=None, examples=[245])
     cover_url: str | None = None
+    stream_count: int | None = Field(default=None, ge=0, examples=[1234])
 
 
 class TrackDetail(TrackSummary):

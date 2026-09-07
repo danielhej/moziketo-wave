@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models import Artist, Track
 from app.schemas.admin import ImportResult
-from app.services.media import resolve_audio_url
+from app.services.media import extract_wp_media
 
 STATION_ENDPOINTS = (
     "wp/v2/station",
@@ -109,14 +109,21 @@ async def run_import(
                         await session.flush()
                         result.artists_upserted += 1
 
+                    meta = item.get("meta") or {}
+                    wp_audio, wp_cover, wp_duration = extract_wp_media(meta)
+                    if not wp_audio or "dl.moziketo.ir" in wp_audio:
+                        result.skipped += 1
+                        continue
+
                     track = await session.scalar(select(Track).where(Track.slug == slug))
-                    audio_url = resolve_audio_url(slug, None)
                     if track is None:
                         track = Track(
                             slug=slug,
                             title=str(title),
                             artist_id=artist.id,
-                            audio_url=audio_url,
+                            audio_url=wp_audio,
+                            cover_url=wp_cover,
+                            duration_seconds=wp_duration,
                             published_at=published_at or datetime.now(UTC),
                         )
                         session.add(track)
@@ -124,7 +131,11 @@ async def run_import(
                     else:
                         track.title = str(title)
                         track.artist_id = artist.id
-                        track.audio_url = track.audio_url or audio_url
+                        track.audio_url = wp_audio
+                        if wp_cover:
+                            track.cover_url = wp_cover
+                        if wp_duration is not None:
+                            track.duration_seconds = wp_duration
                         track.published_at = published_at or track.published_at
                         result.tracks_upserted += 1
 

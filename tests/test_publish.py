@@ -14,7 +14,11 @@ async def test_unpublished_detail_404(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
-async def test_track_has_resolved_audio_url(client: AsyncClient) -> None:
+async def test_track_has_stored_audio_url(client: AsyncClient) -> None:
     response = await client.get("/api/v1/tracks/bipolar")
     assert response.status_code == 200
-    assert response.json()["audio_url"].endswith("bipolar.mp3")
+    body = response.json()
+    assert body["audio_url"] is not None
+    assert "arvanstorage" in body["audio_url"]
+    assert body["cover_url"] is not None
+    assert "dl.moziketo.ir" not in body["cover_url"]

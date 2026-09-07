@@ -2,11 +2,11 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Artist, Track
+from app.models import Artist, Tag, TagKind, Track
 from app.schemas import (
     ArtistDetail,
     ArtistListResponse,
@@ -35,7 +35,62 @@ def _track_summary(track: Track) -> TrackSummary:
         artist_name=track.artist.name,
         duration_seconds=track.duration_seconds,
         cover_url=resolve_cover_url(track.slug, track.cover_url),
+        stream_count=track.stream_count,
     )
+
+
+def _track_order(sort: str):
+    if sort == "popular":
+        return (Track.stream_count.desc(), Track.published_at.desc())
+    return (Track.published_at.desc(),)
+
+
+def _tracks_with_tag_subquery(kind: str, slug: str):
+    return (
+        select(Track.id)
+        .join(Track.tags)
+        .where(Tag.kind == kind, Tag.slug == slug)
+    )
+
+
+def _apply_track_filters(
+    stmt,
+    *,
+    genre: str | None = None,
+    mood: str | None = None,
+    tag: str | None = None,
+    artist: str | None = None,
+):
+    if artist:
+        stmt = stmt.join(Artist).where(Artist.slug == artist)
+    if genre:
+        stmt = stmt.where(Track.id.in_(_tracks_with_tag_subquery(TagKind.GENRE, genre)))
+    if mood:
+        stmt = stmt.where(Track.id.in_(_tracks_with_tag_subquery(TagKind.MOOD, mood)))
+    if tag:
+        stmt = stmt.where(Track.id.in_(_tracks_with_tag_subquery(TagKind.STATION_TAG, tag)))
+    return stmt
+
+
+async def _fetch_tracks(
+    session: AsyncSession,
+    *,
+    sort: str = "latest",
+    limit: int = 24,
+    genre: str | None = None,
+    mood: str | None = None,
+    tag: str | None = None,
+    artist: str | None = None,
+) -> list[Track]:
+    stmt = (
+        select(Track)
+        .options(selectinload(Track.artist))
+        .where(published_track_filter())
+    )
+    stmt = _apply_track_filters(stmt, genre=genre, mood=mood, tag=tag, artist=artist)
+    stmt = stmt.order_by(*_track_order(sort)).limit(limit)
+    result = await session.execute(stmt)
+    return list(result.scalars().unique().all())
 
 
 def _track_detail(track: Track) -> TrackDetail:
@@ -73,9 +128,25 @@ async def _check_trgm(session: AsyncSession) -> bool:
 
 
 async def list_tracks(
-    session: AsyncSession, *, page: int = 1, page_size: int = 24
+    session: AsyncSession,
+    *,
+    page: int = 1,
+    page_size: int = 24,
+    sort: str = "latest",
+    genre: str | None = None,
+    mood: str | None = None,
+    tag: str | None = None,
+    artist: str | None = None,
 ) -> TrackListResponse:
-    cache_key = f"tracks:list:{page}:{page_size}"
+    if sort not in ("latest", "popular"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="sort must be 'latest' or 'popular'",
+        )
+
+    cache_key = (
+        f"tracks:list:{page}:{page_size}:{sort}:{genre}:{mood}:{tag}:{artist}"
+    )
     cached = await cache_get(cache_key)
     if cached is not None:
         return TrackListResponse.model_validate(cached)
@@ -85,17 +156,20 @@ async def list_tracks(
     offset = (page - 1) * page_size
 
     count_stmt = select(func.count()).select_from(Track).where(published_track_filter())
+    count_stmt = _apply_track_filters(
+        count_stmt, genre=genre, mood=mood, tag=tag, artist=artist
+    )
     total = await session.scalar(count_stmt) or 0
 
-    stmt = apply_published_filter(
+    stmt = (
         select(Track)
         .options(selectinload(Track.artist))
-        .order_by(Track.published_at.desc())
-        .offset(offset)
-        .limit(page_size)
+        .where(published_track_filter())
     )
+    stmt = _apply_track_filters(stmt, genre=genre, mood=mood, tag=tag, artist=artist)
+    stmt = stmt.order_by(*_track_order(sort)).offset(offset).limit(page_size)
     result = await session.execute(stmt)
-    tracks = result.scalars().all()
+    tracks = result.scalars().unique().all()
 
     response = TrackListResponse(
         items=[_track_summary(t) for t in tracks],
@@ -144,6 +218,12 @@ async def resolve_stream_url(session: AsyncSession, slug: str) -> str:
     url = resolve_audio_url(track.slug, track.audio_url)
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not available")
+    await session.execute(
+        update(Track)
+        .where(Track.id == track.id)
+        .values(stream_count=Track.stream_count + 1)
+    )
+    await session.commit()
     return url
 
 
