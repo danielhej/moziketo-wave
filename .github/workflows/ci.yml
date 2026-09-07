@@ -6,9 +6,30 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint-test:
+  test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: moziketo
+          POSTGRES_PASSWORD: moziketo
+          POSTGRES_DB: moziketo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moziketo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://moziketo:moziketo@localhost:5432/moziketo
+      CORS_ORIGINS: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
 
@@ -16,23 +37,45 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ".[dev]"
+      - name: Install
+        run: pip install -e ".[dev]"
 
       - name: Ruff
-        run: ruff check app tests
+        run: ruff check app tests alembic scripts
+
+      - name: Migrate
+        run: alembic upgrade head
+
+      - name: Seed
+        run: python scripts/seed.py
 
       - name: Pytest
         run: pytest -q
 
   docker:
     runs-on: ubuntu-latest
-    needs: lint-test
+    needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t moziketo-wave:${{ github.sha }} .
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/danielhej/moziketo-wave:main
+            ghcr.io/danielhej/moziketo-wave:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

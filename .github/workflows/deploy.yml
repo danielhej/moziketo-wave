@@ -1,0 +1,87 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Wave image tag (main, sha-..., v1.0.0)
+        required: false
+        default: main
+
+concurrency:
+  group: deploy-moziketo-hand
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve wave tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="sha-${{ github.event.workflow_run.head_sha }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref=ghcr.io/danielhej/moziketo-wave:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull wave image on runner
+        run: docker pull "${{ steps.meta.outputs.ref }}"
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Sync full stack configs
+        run: |
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          USER="${{ secrets.DEPLOY_USER }}"
+          ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" \
+            "mkdir -p /opt/moziketo/nginx/conf.d /opt/moziketo/backups"
+          scp deploy/docker-compose.prod.yml "${USER}@${HOST}:/opt/moziketo/docker-compose.yml"
+          scp deploy/nginx/conf.d/moziketo.conf "${USER}@${HOST}:/opt/moziketo/nginx/conf.d/moziketo.conf"
+          scp deploy/wave.env.example "${USER}@${HOST}:/opt/moziketo/wave.env.example"
+          scp deploy/web.env.example "${USER}@${HOST}:/opt/moziketo/web.env.example"
+
+      - name: Transfer wave image and deploy stack
+        run: |
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          USER="${{ secrets.DEPLOY_USER }}"
+          IMAGE="${{ steps.meta.outputs.ref }}"
+          TAG="${{ steps.meta.outputs.tag }}"
+
+          docker save "${IMAGE}" | gzip | ssh "${USER}@${HOST}" "gunzip | docker load"
+
+          ssh "${USER}@${HOST}" bash -s <<EOF
+          set -euo pipefail
+          cd /opt/moziketo
+          test -f wave.env || cp wave.env.example wave.env
+          test -f web.env || cp web.env.example web.env
+          export MOZ_WAVE_TAG=${TAG}
+          export MOZ_WEB_TAG=\${MOZ_WEB_TAG:-main}
+          docker compose up -d --remove-orphans
+          docker compose ps
+          EOF

@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: moziketo
+          POSTGRES_PASSWORD: moziketo
+          POSTGRES_DB: moziketo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moziketo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://moziketo:moziketo@localhost:5432/moziketo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify release
+        run: |
+          pip install -e ".[dev]"
+          alembic upgrade head
+          python scripts/seed.py
+          pytest -q
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image ref
+        id: image
+        run: echo "ref=ghcr.io/danielhej/moziketo-wave:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/danielhej/moziketo-wave:${{ github.ref_name }}
+            ghcr.io/danielhej/moziketo-wave:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: true
+
+  deploy-release:
+    runs-on: ubuntu-latest
+    needs: release
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: docker pull "${{ needs.release.outputs.image }}"
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy release to moziketo-hand
+        run: |
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          USER="${{ secrets.DEPLOY_USER }}"
+          IMAGE="${{ needs.release.outputs.image }}"
+          TAG="${{ github.ref_name }}"
+
+          docker save "${IMAGE}" | gzip | ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "gunzip | docker load"
+
+          ssh "${USER}@${HOST}" bash -s <<EOF
+          set -euo pipefail
+          cd /opt/moziketo
+          export MOZ_WAVE_TAG=${TAG}
+          export MOZ_WEB_TAG=\${MOZ_WEB_TAG:-main}
+          docker compose up -d --remove-orphans
+          docker compose ps
+          EOF

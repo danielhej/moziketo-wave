@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://moziketo:moziketo@localhost:5432/moziketo"
     redis_url: str = "redis://localhost:6379/0"
 
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,https://moziketo.ir"
 
     @property
     def cors_origin_list(self) -> list[str]:

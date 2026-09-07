@@ -1,35 +1,24 @@
 ---
-description: Moziketo Wave FastAPI backend — deploy, CI/CD, server access
+description: Moziketo Wave FastAPI backend — DB, API, deploy
 alwaysApply: true
 ---
 
-# Moziketo Wave (FastAPI)
+# Moziketo Wave
 
-Greenfield backend for موزیکتو. **Not WordPress.**
+FastAPI backend for موزیکتو. PostgreSQL catalog. Pairs with `thereisnofork/moz`.
 
-## Server — moziketo-hand
+## Server
 
-- SSH: `ssh moziketo` (deploy@95.38.191.28)
-- Deploy path: `/opt/moziketo/wave` or `/opt/moziketo` compose
-- Agent may SSH, docker compose, edit nginx under `/opt/moziketo/nginx/conf.d`
+- SSH: `ssh moziketo` → `/opt/moziketo`
+- Image: `ghcr.io/danielhej/moziketo-wave:<tag>`
+- Full stack compose in `deploy/docker-compose.prod.yml`
 
 ## Stack
 
-FastAPI · PostgreSQL · Redis · SQLAlchemy async · Alembic · Docker · OpenAPI at `/openapi.json`
-
-## Pairing
-
-- Frontend: **moziketo-web** (Next.js) consumes this API
-- CORS: `NEXT_PUBLIC_*` origins in `.env`
-
-## CI/CD
-
-GitHub Actions: lint (ruff) + pytest + docker build on `main`.
-Deploy: SSH to moziketo-hand, `docker compose up -d --build wave`.
+FastAPI · SQLAlchemy async · Alembic · PostgreSQL · Redis · OpenAPI `/openapi.json`
 
 ## Rules
 
+- API prefix: `/api/v1`
+- Migrations via Alembic; seed: `python scripts/seed.py`
 - Conventional commits; commit only when user asks
-- OpenAPI-first — keep `/docs` and schemas in sync
-- No secrets in git
-- Full context: `~/.cursor/skills/moziketo-access/FRONTEND-AGENT-PROMPT.md` (stack overview)

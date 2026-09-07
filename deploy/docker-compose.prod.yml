@@ -1,0 +1,89 @@
+# Full Moziketo stack on moziketo-hand (/opt/moziketo)
+# Tags set by CI: MOZ_WEB_TAG, MOZ_WAVE_TAG
+
+services:
+  web:
+    image: ghcr.io/thereisnofork/moz:${MOZ_WEB_TAG:-main}
+    container_name: moz-web
+    env_file:
+      - ./web.env
+    restart: unless-stopped
+    networks:
+      - moziketo
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  wave:
+    image: ghcr.io/danielhej/moziketo-wave:${MOZ_WAVE_TAG:-main}
+    container_name: moz-wave
+    env_file:
+      - ./wave.env
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - moziketo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: moz-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moziketo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moziketo}
+      POSTGRES_DB: ${POSTGRES_DB:-moziketo}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - moziketo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-moziketo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: moz-redis
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - moziketo
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: moz-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      web:
+        condition: service_healthy
+      wave:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - moziketo
+
+networks:
+  moziketo:
+    name: moziketo
+
+volumes:
+  postgres_data:
+  redis_data:

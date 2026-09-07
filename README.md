@@ -1,85 +1,90 @@
 # Moziketo Wave
 
-**FastAPI backend** for [موزیکتو](https://moziketo.ir) — Persian music streaming and download platform.
-
-Part of the greenfield Moziketo stack (replacing legacy WordPress):
+**FastAPI backend** for [موزیکتو](https://moziketo.ir) — Persian music streaming & download.
 
 | Repo | Role |
 |------|------|
-| **moziketo-wave** (this) | FastAPI API — catalog, auth, media |
-| [moziketo-web](https://github.com/danielhej/moziketo-web) | Next.js frontend |
-| **moziketo-hand** | Production server (`95.38.191.28`) |
+| **moziketo-wave** (this) | FastAPI API — PostgreSQL catalog |
+| [moz](https://github.com/thereisnofork/moz) | Next.js frontend |
+| **moziketo-hand** | Production server `95.38.191.28` |
 
 ## Stack
 
-- **FastAPI** + Pydantic v2
-- **PostgreSQL** + SQLAlchemy async (Alembic migrations — coming)
-- **Redis** — cache, sessions, rate limits
-- **Docker** — deploy on `moziketo-hand`
+FastAPI · PostgreSQL 16 · Redis · SQLAlchemy async · Alembic · Docker
 
 ## Quick start
 
 ```bash
-# Clone
 git clone git@github.com:danielhej/moziketo-wave.git
 cd moziketo-wave
-
-# Local dev (Python 3.12+)
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-uvicorn app.main:app --reload --port 8000
 
-# Or Docker Compose (API + Postgres + Redis)
-docker compose up --build
+docker compose up -d postgres redis
+alembic upgrade head
+python scripts/seed.py
+uvicorn app.main:app --reload --port 8000
 ```
 
 - API: http://localhost:8000
 - Docs: http://localhost:8000/docs
 - Health: http://localhost:8000/api/v1/health
 
-## API (v1)
+## API v1
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/health` | Health check |
-| GET | `/api/v1/tracks` | List tracks |
+| GET | `/api/v1/health` | Health + DB status |
+| GET | `/api/v1/tracks` | List tracks (paginated) |
 | GET | `/api/v1/tracks/{slug}` | Track detail |
 | GET | `/api/v1/artists` | List artists |
-| GET | `/api/v1/artists/{slug}` | Artist detail |
+| GET | `/api/v1/artists/{slug}` | Artist hub + tracks |
 
-OpenAPI schema: `/openapi.json` — use for Next.js client codegen.
+OpenAPI: `/openapi.json`
 
-## Project layout
+## Database
 
-```
-app/
-├── main.py           # FastAPI app factory
-├── core/             # config, logging
-├── api/v1/           # route handlers
-└── schemas/          # Pydantic models
-tests/
-docker-compose.yml
-Dockerfile
+```bash
+alembic revision --autogenerate -m "description"  # new migration
+alembic upgrade head
+python scripts/seed.py                            # demo data
 ```
 
-## Deploy (moziketo-hand)
+## DevOps
+
+### CI / Deploy / Release
+
+- **CI** — ruff, migrate, seed, pytest, push `ghcr.io/danielhej/moziketo-wave`
+- **Deploy** — full stack to moziketo-hand (wave + web + postgres + nginx)
+- **Release** — tag `v*.*.*` → GitHub Release + deploy
+
+### GitHub Secrets
+
+| Secret | Value |
+|--------|-------|
+| `DEPLOY_HOST` | `95.38.191.28` |
+| `DEPLOY_USER` | `deploy` |
+| `SSH_PRIVATE_KEY` | CI deploy key |
+
+### Production (moziketo-hand)
 
 ```bash
 ssh moziketo
 cd /opt/moziketo
-docker compose up -d --build wave
+# wave.env + web.env from deploy/*.env.example
+docker compose up -d
 ```
 
-Server path: `/opt/moziketo/wave` (or monorepo compose at `/opt/moziketo`).
+Nginx routes:
+- `/` → Next.js
+- `/api/` → FastAPI
+- `/docs` → OpenAPI UI
 
 ## Development
 
 ```bash
-ruff check app tests
+ruff check app tests alembic scripts
 pytest
+docker compose up --build
 ```
-
-## License
-
-Private — Moziketo project.

@@ -15,9 +15,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: moziketo
-      POSTGRES_PASSWORD: moziketo
-      POSTGRES_DB: moziketo
+      POSTGRES_USER: ${POSTGRES_USER:-moziketo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moziketo}
+      POSTGRES_DB: ${POSTGRES_DB:-moziketo}
     ports:
       - "5432:5432"
     volumes:
