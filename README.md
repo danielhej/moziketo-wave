@@ -10,7 +10,7 @@
 
 ## Stack
 
-FastAPI · PostgreSQL 16 · Redis · SQLAlchemy async · Alembic · JWT · Docker
+FastAPI · PostgreSQL 16 · Redis · SQLAlchemy async · Alembic · JWT · Taskiq · Meilisearch (optional) · Docker
 
 ## Quick start
 
@@ -21,7 +21,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
 
-docker compose up -d postgres redis
+docker compose up -d postgres redis meilisearch
 alembic upgrade head
 python scripts/seed.py
 uvicorn app.main:app --reload --port 8000
@@ -37,7 +37,7 @@ uvicorn app.main:app --reload --port 8000
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/health` | Health + DB + Redis status |
+| GET | `/api/v1/health` | Health + DB + Redis + S3 status |
 | GET | `/api/v1/browse` | Home sections (popular, latest, new) |
 | GET | `/api/v1/tracks` | List tracks (`sort`, `genre`, `mood`, `tag` filters) |
 | GET | `/api/v1/tracks/{slug}` | Track detail |
@@ -87,6 +87,10 @@ uvicorn app.main:app --reload --port 8000
 | DELETE | `/api/v1/auth/me/oauth/{provider}` | Bearer | Unlink OAuth provider |
 | POST | `/api/v1/auth/refresh` | refresh token | Rotate tokens |
 | GET | `/api/v1/auth/me` | Bearer | Current user |
+| POST | `/api/v1/auth/me/change-email` | Bearer | Request email change (confirm via link) |
+| GET | `/api/v1/auth/me/change-email/confirm` | — | Confirm email change (`?token=`) |
+| GET | `/api/v1/auth/me/export` | Bearer | Export profile, favorites, playlists, history |
+| DELETE | `/api/v1/auth/me` | Bearer | Soft-delete account (password or OAuth confirm) |
 | POST | `/api/v1/auth/logout` | refresh token | Revoke refresh token |
 
 **Apple Sign In** is disabled by default (`OAUTH_APPLE_ENABLED=false`). Enable when Apple credentials are configured.
@@ -102,27 +106,69 @@ uvicorn app.main:app --reload --port 8000
 
 ### Admin
 
-| Method | Path | Header | Description |
-|--------|------|--------|-------------|
-| POST | `/api/v1/admin/import` | `X-Admin-Key` | Import from WP (`limit=0` = all pages) |
-| POST | `/api/v1/admin/import-json` | `X-Admin-Key` | Import enriched JSON export |
-| PATCH | `/api/v1/admin/tracks/{slug}` | `X-Admin-Key` | Patch track / publish state |
-| POST | `/api/v1/admin/tracks/{slug}/publish` | `X-Admin-Key` | Publish track |
-| POST | `/api/v1/admin/tracks/{slug}/unpublish` | `X-Admin-Key` | Unpublish track |
-| PATCH | `/api/v1/admin/artists/{slug}` | `X-Admin-Key` | Patch artist |
-| PATCH | `/api/v1/admin/playlists/{slug}` | `X-Admin-Key` | Patch editorial playlist |
-| POST | `/api/v1/admin/albums` | `X-Admin-Key` | Create album |
-| PATCH | `/api/v1/admin/albums/{slug}` | `X-Admin-Key` | Patch album / track order |
-| POST | `/api/v1/admin/albums/{slug}/publish` | `X-Admin-Key` | Publish album |
-| POST | `/api/v1/admin/albums/{slug}/unpublish` | `X-Admin-Key` | Unpublish album |
-| POST | `/api/v1/admin/uploads` | `X-Admin-Key` | Upload cover/audio to S3 |
-| GET | `/api/v1/admin/analytics/overview` | `X-Admin-Key` | Dashboard totals |
-| GET | `/api/v1/admin/analytics/top-tracks` | `X-Admin-Key` | Top tracks by period |
-| GET | `/api/v1/admin/analytics/top-artists` | `X-Admin-Key` | Top artists by period |
-| GET | `/api/v1/admin/analytics/signups` | `X-Admin-Key` | User signups time series |
-| GET | `/api/v1/admin/analytics/plays` | `X-Admin-Key` | Play events time series |
+All admin routes require header **`X-Admin-Key: <ADMIN_API_KEY>`** (no JWT in this phase).
 
-**Scheduled sync:** copy [`deploy/cron/import-catalog.sh`](deploy/cron/import-catalog.sh) to `/opt/moziketo/cron/` and add crontab `0 */6 * * *`.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/admin/catalog/summary` | Counts: tracks, artists, albums, users |
+| GET | `/api/v1/admin/import/status` | Latest background import job |
+| POST | `/api/v1/admin/import` | Enqueue WP import → **202** + `job_id` |
+| POST | `/api/v1/admin/import/sync` | Synchronous import (legacy / small runs) |
+| GET | `/api/v1/admin/jobs/{id}` | Background job status/result |
+| POST | `/api/v1/admin/search/reindex` | Enqueue Meilisearch full reindex |
+| GET | `/api/v1/admin/users` | Paginated users (masked email) |
+| PATCH | `/api/v1/admin/users/{id}` | Activate/deactivate user |
+| CRUD | `/api/v1/admin/webhooks` | Webhook subscriptions |
+| GET | `/api/v1/admin/webhooks/{id}/deliveries` | Delivery log |
+| POST | `/api/v1/admin/webhooks/{id}/test` | Send test payload |
+| POST | `/api/v1/admin/import-json` | Import enriched JSON export |
+| PATCH | `/api/v1/admin/tracks/{slug}` | Patch track / publish state |
+| POST | `/api/v1/admin/tracks/{slug}/publish` | Publish track |
+| POST | `/api/v1/admin/tracks/{slug}/unpublish` | Unpublish track |
+| PATCH | `/api/v1/admin/artists/{slug}` | Patch artist |
+| PATCH | `/api/v1/admin/playlists/{slug}` | Patch editorial playlist |
+| POST | `/api/v1/admin/albums` | Create album |
+| PATCH | `/api/v1/admin/albums/{slug}` | Patch album / track order |
+| POST | `/api/v1/admin/albums/{slug}/publish` | Publish album |
+| POST | `/api/v1/admin/albums/{slug}/unpublish` | Unpublish album |
+| POST | `/api/v1/admin/uploads` | Upload cover/audio to S3 (presigned GET in response) |
+| GET | `/api/v1/admin/analytics/overview` | Dashboard totals |
+| GET | `/api/v1/admin/analytics/top-tracks` | Top tracks by period |
+| GET | `/api/v1/admin/analytics/top-artists` | Top artists by period |
+| GET | `/api/v1/admin/analytics/signups` | User signups time series |
+| GET | `/api/v1/admin/analytics/plays` | Play events time series |
+
+### Rate limits (public)
+
+IP-based when `PUBLIC_RATE_LIMIT_ENABLED=true` (Redis):
+
+| Scope | Default | Routes |
+|-------|---------|--------|
+| Search | 30/min | `GET /search` |
+| Playback | 120/min | stream/download redirects |
+| Catalog | 300/min | tracks, artists, browse |
+
+Auth endpoints keep separate limits (`AUTH_RATE_LIMIT_ENABLED`).
+
+### Background jobs & search
+
+- **Taskiq worker** — `docker compose up worker` (same image, Redis broker)
+- **Meilisearch** — optional; set `SEARCH_BACKEND=meili` after reindex (`POST /admin/search/reindex`)
+- Stream/download URLs use **presigned S3 GET** when media is in your bucket (`S3_UPLOAD_ACL=private`)
+
+**Scheduled sync:** copy [`deploy/cron/import-catalog.sh`](deploy/cron/import-catalog.sh) to `/opt/moziketo/cron/` and add crontab `0 */6 * * *` (expects HTTP **202** from async import).
+
+### Building an admin UI
+
+Backend-only in Phase 3 — no bundled admin frontend. To build a panel (separate app or moz route):
+
+1. Store **`ADMIN_API_KEY` server-side only** (Next.js API route / BFF). Never expose it in the browser bundle.
+2. Call admin endpoints with `X-Admin-Key` from your server.
+3. Use OpenAPI `/openapi.json` and Swagger `/docs` — tags `admin`, `admin-webhooks`.
+4. CORS: allow your admin origin in `CORS_ORIGINS` if the BFF is on another domain.
+5. Async import: poll `GET /admin/jobs/{id}` until `status` is `completed` or `failed`.
+
+Key env vars: `ADMIN_API_KEY`, `MEILI_*`, `SEARCH_BACKEND`, `S3_PRESIGN_*`, `PUBLIC_RATE_LIMIT_*`, `TASKIQ_INLINE` (dev only).
 
 **OAuth production setup:**
 
@@ -164,7 +210,8 @@ python scripts/import_wp.py --limit 0             # import all WP stations
 ssh moziketo
 cd /opt/moziketo
 # wave.env + web.env from deploy/*.env.example
-# Set S3_* credentials for uploads; run migrations on deploy (docker entrypoint)
+# Set S3_*, ADMIN_API_KEY, optional MEILI_* / SEARCH_BACKEND
+# docker compose includes wave, worker, meilisearch, postgres, redis, nginx
 docker compose up -d
 alembic upgrade head  # if not auto-run by container
 ```

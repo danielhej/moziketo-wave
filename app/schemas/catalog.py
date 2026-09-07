@@ -11,6 +11,11 @@ class HealthResponse(BaseModel):
     version: str = Field(default="0.2.0", examples=["0.2.0"])
     database: str = Field(default="ok", description="PostgreSQL reachability", examples=["ok"])
     redis: str = Field(default="ok", description="Redis reachability", examples=["ok"])
+    storage: str = Field(
+        default="skipped",
+        description="Object storage (S3) reachability",
+        examples=["ok", "skipped", "error"],
+    )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

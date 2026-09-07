@@ -90,6 +90,34 @@ services:
     networks:
       - moziketo
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: moz-meilisearch
+    environment:
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MASTER_KEY: ${MEILI_API_KEY:-changeme}
+    volumes:
+      - meili_data:/data
+    restart: unless-stopped
+    networks:
+      - moziketo
+
+  worker:
+    image: ghcr.io/danielhej/moziketo-wave:${MOZ_WAVE_TAG:-main}
+    container_name: moz-worker
+    command: ["taskiq", "worker", "app.tasks.worker:broker"]
+    env_file:
+      - ./wave.env
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - moziketo
+
   nginx:
     image: nginx:1.27-alpine
     container_name: moz-nginx
@@ -114,3 +142,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  meili_data:

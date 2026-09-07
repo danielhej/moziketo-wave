@@ -55,6 +55,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await connect_redis()
     except Exception:
         pass
+    try:
+        from app.services.search_meili import ensure_indexes
+
+        await ensure_indexes()
+    except Exception:
+        pass
     yield
     await disconnect_redis()
 

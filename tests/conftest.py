@@ -10,6 +10,8 @@ os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("DEBUG", "true")
 os.environ.setdefault("AUTH_RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
+os.environ.setdefault("TASKIQ_INLINE", "true")
+os.environ.setdefault("PUBLIC_RATE_LIMIT_ENABLED", "false")
 
 from app.api.deps import get_db_session
 from app.core.config import get_settings
@@ -26,6 +28,11 @@ def _disable_auth_rate_limit_by_default(
     if "low_rate_limits" in request.fixturenames:
         return
     monkeypatch.setattr(settings, "auth_rate_limit_enabled", False)
+    if "low_public_rate_limits" in request.fixturenames:
+        monkeypatch.setattr(settings, "public_rate_limit_enabled", True)
+    else:
+        monkeypatch.setattr(settings, "public_rate_limit_enabled", False)
+    monkeypatch.setattr(settings, "taskiq_inline", True)
     monkeypatch.setattr(settings, "app_env", "development")
     monkeypatch.setattr(settings, "debug", True)
 

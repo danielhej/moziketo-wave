@@ -94,6 +94,8 @@ async def login_user(session: AsyncSession, email: str, password: str) -> TokenR
         )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
+    if user.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deleted")
 
     return await issue_tokens(user)
 

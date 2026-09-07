@@ -224,7 +224,9 @@ async def resolve_stream_url(session: AsyncSession, slug: str) -> str:
         .values(stream_count=Track.stream_count + 1)
     )
     await session.commit()
-    return url
+    from app.services.storage import resolve_media_url
+
+    return await resolve_media_url(url)
 
 
 async def list_artists(
@@ -318,6 +320,12 @@ async def search_catalog(
     q: str,
     limit: int = 24,
 ) -> SearchResponse:
+    from app.services.search_meili import search_meili
+
+    meili_result = await search_meili(q=q, limit=limit)
+    if meili_result is not None:
+        return meili_result
+
     query = q.strip()
     if len(query) < 2:
         raise HTTPException(

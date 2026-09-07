@@ -4,7 +4,6 @@ import hashlib
 
 from fastapi import HTTPException, Request, status
 
-from app.core.config import get_settings
 from app.core.redis import connect_redis, get_redis
 
 
@@ -22,9 +21,15 @@ def _redis_key(scope: str, key: str) -> str:
     return f"ratelimit:{scope}:{digest}"
 
 
-async def check_rate_limit(scope: str, key: str, *, limit: int, window_seconds: int) -> None:
-    settings = get_settings()
-    if not settings.auth_rate_limit_enabled:
+async def check_rate_limit(
+    scope: str,
+    key: str,
+    *,
+    limit: int,
+    window_seconds: int,
+    enabled: bool = True,
+) -> None:
+    if not enabled:
         return
 
     await connect_redis()

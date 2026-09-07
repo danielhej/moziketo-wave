@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class ImportResult(BaseModel):
+    albums_upserted: int = 0
     artists_upserted: int = 0
     tracks_upserted: int = 0
     tags_upserted: int = 0

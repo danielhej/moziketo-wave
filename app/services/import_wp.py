@@ -70,7 +70,7 @@ async def _resolve_album(
     artist: Artist,
     meta: dict[str, Any],
     published_at: datetime | None,
-) -> Album | None:
+) -> tuple[Album, bool]:
     album_slug, album_title = extract_wp_album(meta)
     if not album_slug and not album_title:
         album_slug = f"{artist.slug}-singles"
@@ -81,6 +81,7 @@ async def _resolve_album(
         album_slug = _slugify(album_title)
 
     album = await session.scalar(select(Album).where(Album.slug == album_slug))
+    created = False
     if album is None:
         album = Album(
             slug=album_slug,
@@ -90,7 +91,8 @@ async def _resolve_album(
         )
         session.add(album)
         await session.flush()
-    return album
+        created = True
+    return album, created
 
 
 async def run_import(
@@ -147,12 +149,14 @@ async def run_import(
                         continue
 
                     track = await session.scalar(select(Track).where(Track.slug == slug))
-                    album = await _resolve_album(
+                    album, album_created = await _resolve_album(
                         session,
                         artist=artist,
                         meta=meta,
                         published_at=published_at,
                     )
+                    if album_created:
+                        result.albums_upserted += 1
                     if track is None:
                         track = Track(
                             slug=slug,

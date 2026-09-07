@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     auth_forgot_email_window: int = 3600
     auth_forgot_ip_limit: int = 10
     auth_forgot_ip_window: int = 3600
+    auth_change_email_limit: int = 3
+    auth_change_email_window: int = 3600
+    auth_export_limit: int = 5
+    auth_export_window: int = 3600
+
+    # Public API rate limits
+    public_rate_limit_enabled: bool = True
+    public_search_ip_limit: int = 30
+    public_search_ip_window: int = 60
+    public_playback_ip_limit: int = 120
+    public_playback_ip_window: int = 60
+    public_catalog_ip_limit: int = 300
+    public_catalog_ip_window: int = 60
 
     # Password reset
     password_reset_ttl_seconds: int = 3600
@@ -56,7 +69,9 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     frontend_verify_url: str = "https://pwa.moziketo.ir/auth/verify-email"
     frontend_reset_url: str = "https://pwa.moziketo.ir/auth/reset-password"
+    frontend_change_email_url: str = "https://pwa.moziketo.ir/auth/change-email"
     email_verify_ttl_seconds: int = 86400
+    email_change_ttl_seconds: int = 86400
 
     # OAuth
     oauth_frontend_callback_url: str = "https://pwa.moziketo.ir/auth/callback"
@@ -77,7 +92,17 @@ class Settings(BaseSettings):
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_public_base_url: str = ""
+    s3_upload_acl: str = "private"
+    s3_presign_ttl_seconds: int = 3600
+    s3_presign_upload_ttl: int = 900
     upload_max_bytes: int = 10_485_760
+
+    # Background jobs (Taskiq)
+    taskiq_inline: bool = False
+    meili_url: str = ""
+    meili_api_key: str = ""
+    meili_index_prefix: str = "moziketo"
+    search_backend: str = "postgres"
 
     @property
     def cors_origin_list(self) -> list[str]:

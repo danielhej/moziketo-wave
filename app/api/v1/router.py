@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     admin,
     admin_analytics,
+    admin_webhooks,
     albums,
     auth,
     browse,
@@ -30,6 +31,7 @@ router.include_router(recommendations.router)
 router.include_router(recommendations.catalog_router)
 router.include_router(playback.router)
 router.include_router(admin.router)
+router.include_router(admin_webhooks.router)
 router.include_router(admin_analytics.router)
 router.include_router(uploads.router)
 router.include_router(uploads.me_router)

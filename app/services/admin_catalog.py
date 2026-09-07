@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Album, Artist, Playlist, PlaylistKind, PlaylistTrack, Track
+from app.models.webhook import WebhookEvent
 from app.schemas.admin_catalog import (
     AdminAlbumCreate,
     AdminAlbumPatch,
@@ -16,6 +17,7 @@ from app.schemas.admin_catalog import (
     AdminTrackPatch,
 )
 from app.services.cache import cache_delete_pattern
+from app.services.webhooks import emit_event
 
 
 async def _invalidate_catalog_cache() -> None:
@@ -39,15 +41,19 @@ async def patch_track(session: AsyncSession, slug: str, data: AdminTrackPatch) -
 
 
 async def publish_track(session: AsyncSession, slug: str) -> Track:
-    return await patch_track(
+    track = await patch_track(
         session,
         slug,
         AdminTrackPatch(published_at=datetime.now(UTC)),
     )
+    await emit_event(session, WebhookEvent.TRACK_PUBLISHED, {"slug": slug})
+    return track
 
 
 async def unpublish_track(session: AsyncSession, slug: str) -> Track:
-    return await patch_track(session, slug, AdminTrackPatch(published_at=None))
+    track = await patch_track(session, slug, AdminTrackPatch(published_at=None))
+    await emit_event(session, WebhookEvent.TRACK_UNPUBLISHED, {"slug": slug})
+    return track
 
 
 async def patch_artist(session: AsyncSession, slug: str, data: AdminArtistPatch) -> Artist:
@@ -189,11 +195,13 @@ async def patch_album(session: AsyncSession, slug: str, data: AdminAlbumPatch) -
 
 
 async def publish_album(session: AsyncSession, slug: str) -> Album:
-    return await patch_album(
+    album = await patch_album(
         session,
         slug,
         AdminAlbumPatch(published_at=datetime.now(UTC)),
     )
+    await emit_event(session, WebhookEvent.ALBUM_PUBLISHED, {"slug": slug})
+    return album
 
 
 async def unpublish_album(session: AsyncSession, slug: str) -> Album:

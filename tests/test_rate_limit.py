@@ -18,8 +18,9 @@ def low_rate_limits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_login_rate_limit(client: AsyncClient, low_rate_limits: None) -> None:
     ip = f"10.0.{uuid.uuid4().int % 250}.{uuid.uuid4().int % 250}"
+    email = f"ratelimit-login-{uuid.uuid4().hex[:8]}@moziketo.ir"
     headers = {"X-Forwarded-For": ip}
-    payload = {"email": "nobody@moziketo.ir", "password": "wrongpass1"}
+    payload = {"email": email, "password": "wrongpass1"}
     for _ in range(2):
         response = await client.post("/api/v1/auth/login", json=payload, headers=headers)
         assert response.status_code == 401

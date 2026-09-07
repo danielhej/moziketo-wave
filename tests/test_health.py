@@ -42,3 +42,4 @@ async def test_health(client: AsyncClient) -> None:
     assert body["status"] == "ok"
     assert body["database"] == "ok"
     assert body["redis"] in ("ok", "error")
+    assert body["storage"] in ("ok", "error", "skipped")

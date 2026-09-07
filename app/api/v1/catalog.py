@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db_session
+from app.api.deps import get_db_session, rate_limit_catalog, rate_limit_search
 from app.core.redis import check_redis
 from app.schemas import (
     ArtistDetail,
@@ -14,6 +14,7 @@ from app.schemas import (
     TrackListResponse,
 )
 from app.services import catalog as catalog_service
+from app.services.storage import check_s3
 
 router = APIRouter()
 
@@ -28,9 +29,11 @@ router = APIRouter()
 async def health(session: AsyncSession = Depends(get_db_session)) -> HealthResponse:
     db_ok = await catalog_service.check_database(session)
     redis_ok = await check_redis()
+    storage_status = await check_s3()
     return HealthResponse(
         database="ok" if db_ok else "error",
         redis="ok" if redis_ok else "error",
+        storage=storage_status,
     )
 
 
@@ -50,6 +53,7 @@ async def list_tracks(
     tag: Annotated[str | None, Query(description="Filter by station tag slug")] = None,
     artist: Annotated[str | None, Query(description="Filter by artist slug")] = None,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_catalog),
 ) -> TrackListResponse:
     return await catalog_service.list_tracks(
         session,
@@ -73,6 +77,7 @@ async def list_tracks(
 async def get_track(
     slug: str,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_catalog),
 ) -> TrackDetail:
     return await catalog_service.get_track(session, slug)
 
@@ -88,6 +93,7 @@ async def list_artists(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 24,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_catalog),
 ) -> ArtistListResponse:
     return await catalog_service.list_artists(session, page=page, page_size=page_size)
 
@@ -102,6 +108,7 @@ async def list_artists(
 async def get_artist(
     slug: str,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_catalog),
 ) -> ArtistDetail:
     return await catalog_service.get_artist(session, slug)
 
@@ -117,5 +124,6 @@ async def search_catalog(
     q: Annotated[str, Query(min_length=2, description="Search term (min 2 chars)")],
     limit: Annotated[int, Query(ge=1, le=50, description="Max results per type")] = 24,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_search),
 ) -> SearchResponse:
     return await catalog_service.search_catalog(session, q=q, limit=limit)

@@ -8,7 +8,10 @@ from app.api.deps import get_current_user, get_current_user_id, get_db_session
 from app.core.config import get_settings
 from app.models import User
 from app.schemas.auth import (
+    ChangeEmailRequest,
+    ChangeEmailRequestResponse,
     ChangePasswordRequest,
+    DeleteAccountRequest,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LoginRequest,
@@ -22,9 +25,11 @@ from app.schemas.auth import (
     SetPasswordRequest,
     TokenResponse,
     UpdateProfileRequest,
+    UserExportResponse,
     UserResponse,
     VerifyEmailRequestResponse,
 )
+from app.services import account_lifecycle as account_lifecycle_service
 from app.services import auth as auth_service
 from app.services import email_verification as email_verification_service
 from app.services import oauth as oauth_service
@@ -72,6 +77,7 @@ async def register(
         ip,
         limit=settings.auth_register_ip_limit,
         window_seconds=settings.auth_register_ip_window,
+        enabled=settings.auth_rate_limit_enabled,
     )
     return await auth_service.register_user(session, data)
 
@@ -104,12 +110,14 @@ async def login(
         ip,
         limit=settings.auth_login_ip_limit,
         window_seconds=settings.auth_login_ip_window,
+        enabled=settings.auth_rate_limit_enabled,
     )
     await check_rate_limit(
         "login_email",
         data.email.lower(),
         limit=settings.auth_login_email_limit,
         window_seconds=settings.auth_login_email_window,
+        enabled=settings.auth_rate_limit_enabled,
     )
     return await auth_service.login_user(session, data.email, data.password)
 
@@ -146,12 +154,14 @@ async def forgot_password(
         ip,
         limit=settings.auth_forgot_ip_limit,
         window_seconds=settings.auth_forgot_ip_window,
+        enabled=settings.auth_rate_limit_enabled,
     )
     await check_rate_limit(
         "forgot_email",
         data.email.lower(),
         limit=settings.auth_forgot_email_limit,
         window_seconds=settings.auth_forgot_email_window,
+        enabled=settings.auth_rate_limit_enabled,
     )
 
     result = await password_reset_service.request_password_reset(session, data.email)
@@ -403,3 +413,85 @@ async def confirm_verify_email(
 )
 async def logout(data: RefreshRequest) -> None:
     await auth_service.logout_user(data.refresh_token)
+
+
+@router.post(
+    "/me/change-email",
+    summary="Request email change",
+    responses={
+        200: {"model": ChangeEmailRequestResponse},
+        204: {"description": "Confirmation email sent"},
+        429: _AUTH_429,
+    },
+)
+async def change_email_request(
+    data: ChangeEmailRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    settings = get_settings()
+    await check_rate_limit(
+        "change_email",
+        str(user.id),
+        limit=settings.auth_change_email_limit,
+        window_seconds=settings.auth_change_email_window,
+        enabled=settings.auth_rate_limit_enabled,
+    )
+    result = await account_lifecycle_service.request_change_email(
+        session, user, str(data.new_email)
+    )
+    if result is not None:
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/me/change-email/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Confirm email change",
+)
+async def change_email_confirm(
+    token: Annotated[str, Query(min_length=16)],
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    await account_lifecycle_service.confirm_change_email(session, token)
+
+
+@router.get(
+    "/me/export",
+    response_model=UserExportResponse,
+    summary="Export account data",
+    responses={429: _AUTH_429},
+)
+async def export_my_data(
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> UserExportResponse:
+    settings = get_settings()
+    await check_rate_limit(
+        "export",
+        str(user.id),
+        limit=settings.auth_export_limit,
+        window_seconds=settings.auth_export_window,
+        enabled=settings.auth_rate_limit_enabled,
+    )
+    return await account_lifecycle_service.export_user_data(session, user)
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete account (soft delete)",
+)
+async def delete_my_account(
+    data: DeleteAccountRequest,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> None:
+    await account_lifecycle_service.delete_account(
+        session,
+        user,
+        password=data.password,
+        confirm=data.confirm,
+    )

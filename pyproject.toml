@@ -20,6 +20,8 @@ dependencies = [
     "authlib>=1.4.0",
     "aiosmtplib>=3.0.0",
     "boto3>=1.35.0",
+    "taskiq>=0.11.0",
+    "taskiq-redis>=1.0.0",
 ]
 
 [project.optional-dependencies]

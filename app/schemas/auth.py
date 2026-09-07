@@ -189,6 +189,27 @@ class VerifyEmailRequestResponse(BaseModel):
     expires_in: int
 
 
+class ChangeEmailRequest(BaseModel):
+    new_email: EmailStr
+
+
+class ChangeEmailRequestResponse(BaseModel):
+    change_email_token: str | None = None
+    expires_in: int | None = None
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str | None = None
+    confirm: bool = False
+
+
+class UserExportResponse(BaseModel):
+    profile: dict
+    favorites: list[str]
+    playlists: list[dict]
+    play_history: list[dict]
+
+
 class OAuthExchangeRequest(BaseModel):
     """Exchange one-time OAuth code (from frontend callback) for JWT tokens."""
 

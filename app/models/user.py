@@ -29,6 +29,9 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pending_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    email_change_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     favorites: Mapped[list[Favorite]] = relationship(back_populates="user", lazy="selectin")

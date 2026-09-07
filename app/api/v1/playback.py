@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db_session
+from app.api.deps import get_db_session, rate_limit_playback
 from app.services import catalog as catalog_service
 
 router = APIRouter(tags=["playback"])
@@ -14,6 +14,7 @@ router = APIRouter(tags=["playback"])
 async def stream_track(
     slug: str,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_playback),
 ) -> RedirectResponse:
     url = await catalog_service.resolve_stream_url(session, slug)
     return RedirectResponse(url=url, status_code=302)
@@ -23,6 +24,7 @@ async def stream_track(
 async def download_track(
     slug: str,
     session: AsyncSession = Depends(get_db_session),
+    _: None = Depends(rate_limit_playback),
 ) -> RedirectResponse:
     url = await catalog_service.resolve_stream_url(session, slug)
     filename = quote(f"{slug}.mp3")
