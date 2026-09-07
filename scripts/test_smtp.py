@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Send a test email through wave SMTP config (Postfix relay). Usage: python scripts/test_smtp.py to@example.com"""
+"""Send a test email via wave SMTP (Postfix relay).
+
+Usage: python scripts/test_smtp.py to@example.com
+"""
 
 import asyncio
 import sys
