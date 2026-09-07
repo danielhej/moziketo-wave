@@ -84,8 +84,10 @@ jobs:
           cd /opt/moziketo
           test -f wave.env || cp wave.env.example wave.env
           test -f web.env || cp web.env.example web.env
+          test -f .env && set -a && . ./.env && set +a
           export MOZ_WAVE_TAG=${TAG}
-          export MOZ_WEB_TAG=\${MOZ_WEB_TAG:-main}
+          export MOZ_WEB_TAG=\${MOZ_WEB_TAG:-v0.1.2}
+          grep -q '^MOZ_WAVE_TAG=' .env 2>/dev/null && sed -i "s|^MOZ_WAVE_TAG=.*|MOZ_WAVE_TAG=${TAG}|" .env || echo "MOZ_WAVE_TAG=${TAG}" >> .env
           docker compose up -d --remove-orphans
           docker compose ps
           EOF

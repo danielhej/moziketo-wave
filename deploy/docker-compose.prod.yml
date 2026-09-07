@@ -3,7 +3,7 @@
 
 services:
   web:
-    image: ghcr.io/thereisnofork/moz:${MOZ_WEB_TAG:-main}
+    image: ghcr.io/thereisnofork/moz:${MOZ_WEB_TAG:-v0.1.2}
     container_name: moz-web
     env_file:
       - ./web.env
