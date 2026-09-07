@@ -14,11 +14,23 @@ from app.core.redis import connect_redis, disconnect_redis
 OPENAPI_TAGS = [
     {"name": "system", "description": "Health checks and service metadata."},
     {"name": "catalog", "description": "Artists, tracks, browse, taxonomy, and search."},
-    {"name": "auth", "description": "Registration, login, and JWT token management."},
-    {"name": "favorites", "description": "User favorite tracks (requires Bearer token)."},
-    {"name": "playlists", "description": "Editorial and user playlists."},
+    {
+        "name": "auth",
+        "description": (
+            "Authentication: register, login, JWT refresh, password reset, and OAuth "
+            "(Google, Apple, GitHub). Protected routes use **BearerAuth**."
+        ),
+    },
+    {
+        "name": "favorites",
+        "description": "User favorite tracks (**BearerAuth** required).",
+    },
+    {
+        "name": "playlists",
+        "description": "Editorial playlists (public) and user playlists (**BearerAuth**).",
+    },
     {"name": "playback", "description": "Stream and download redirects to CDN."},
-    {"name": "admin", "description": "Admin operations (requires X-Admin-Key header)."},
+    {"name": "admin", "description": "Admin operations (**X-Admin-Key** header)."},
 ]
 
 
@@ -41,9 +53,24 @@ def create_app() -> FastAPI:
         title="Moziketo Wave",
         description=(
             "FastAPI backend for **موزیکتو** — Persian music streaming & download.\n\n"
+            "## Docs\n"
             "- OpenAPI schema: [`/openapi.json`](/openapi.json)\n"
-            "- Swagger UI: [`/docs`](/docs) or [`/swagger`](/swagger)\n"
-            "- ReDoc: [`/redoc`](/redoc)"
+            "- Swagger UI: [`/docs`](/docs)\n"
+            "- ReDoc: [`/redoc`](/redoc)\n\n"
+            "## Auth flows\n\n"
+            "### Email/password\n"
+            "1. `POST /auth/register` → create account\n"
+            "2. `POST /auth/login` → `{ access_token, refresh_token }`\n"
+            "3. Use `Authorization: Bearer <access_token>` on protected routes\n"
+            "4. `POST /auth/refresh` to rotate tokens\n\n"
+            "### Password reset\n"
+            "1. `POST /auth/forgot-password` — production returns `204` (no body)\n"
+            "2. `POST /auth/reset-password` with token + new password\n\n"
+            "### OAuth (Google / Apple / GitHub)\n"
+            "1. Browser: `GET /auth/oauth/{provider}`\n"
+            "2. Frontend receives redirect with `?code=` at `/auth/callback`\n"
+            "3. `POST /auth/oauth/exchange` → JWT tokens\n\n"
+            "Rate limits apply on login, register, and forgot-password (429 + Retry-After)."
         ),
         version="0.2.0",
         lifespan=lifespan,
@@ -97,13 +124,29 @@ def create_app() -> FastAPI:
                 "type": "http",
                 "scheme": "bearer",
                 "bearerFormat": "JWT",
+                "description": "Access token from POST /auth/login or /auth/oauth/exchange",
             },
             "AdminKey": {
                 "type": "apiKey",
                 "in": "header",
                 "name": "X-Admin-Key",
+                "description": "Admin API key for import endpoints",
             },
         }
+        for path, methods in schema.get("paths", {}).items():
+            needs_bearer = (
+                path.endswith("/auth/me")
+                or "/me/favorites" in path
+                or "/me/playlists" in path
+            )
+            if needs_bearer:
+                for method in methods.values():
+                    if isinstance(method, dict):
+                        method.setdefault("security", [{"BearerAuth": []}])
+            if "/admin/" in path:
+                for method in methods.values():
+                    if isinstance(method, dict):
+                        method.setdefault("security", [{"AdminKey": []}])
         app.openapi_schema = schema
         return schema
 

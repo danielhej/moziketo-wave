@@ -52,6 +52,10 @@ uvicorn app.main:app --reload --port 8000
 |--------|------|------|-------------|
 | POST | `/api/v1/auth/register` | — | Create account |
 | POST | `/api/v1/auth/login` | — | Get JWT tokens |
+| POST | `/api/v1/auth/forgot-password` | — | Request password reset |
+| POST | `/api/v1/auth/reset-password` | — | Reset password with token |
+| GET | `/api/v1/auth/oauth/{provider}` | — | OAuth redirect (google/apple/github) |
+| POST | `/api/v1/auth/oauth/exchange` | — | Exchange one-time OAuth code for JWT |
 | POST | `/api/v1/auth/refresh` | refresh token | Rotate tokens |
 | GET | `/api/v1/auth/me` | Bearer | Current user |
 | POST | `/api/v1/auth/logout` | refresh token | Revoke refresh token |

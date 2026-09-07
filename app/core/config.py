@@ -30,6 +30,34 @@ class Settings(BaseSettings):
 
     cache_ttl_seconds: int = 120
 
+    # Auth rate limits
+    auth_rate_limit_enabled: bool = True
+    auth_login_ip_limit: int = 20
+    auth_login_ip_window: int = 900
+    auth_login_email_limit: int = 10
+    auth_login_email_window: int = 900
+    auth_register_ip_limit: int = 10
+    auth_register_ip_window: int = 3600
+    auth_forgot_email_limit: int = 3
+    auth_forgot_email_window: int = 3600
+    auth_forgot_ip_limit: int = 10
+    auth_forgot_ip_window: int = 3600
+
+    # Password reset
+    password_reset_ttl_seconds: int = 3600
+
+    # OAuth
+    oauth_frontend_callback_url: str = "https://pwa.moziketo.ir/auth/callback"
+    oauth_api_base_url: str = "https://api.moziketo.ir/api/v1"
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    apple_client_id: str = ""
+    apple_team_id: str = ""
+    apple_key_id: str = ""
+    apple_private_key: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

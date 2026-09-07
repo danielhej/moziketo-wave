@@ -5,6 +5,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+os.environ["DISABLE_CACHE"] = "1"
+os.environ.setdefault("APP_ENV", "development")
+os.environ.setdefault("DEBUG", "true")
+os.environ.setdefault("AUTH_RATE_LIMIT_ENABLED", "false")
+
 from app.api.deps import get_db_session
 from app.core.config import get_settings
 from app.core.redis import connect_redis, disconnect_redis
@@ -12,7 +17,16 @@ from app.main import app
 
 settings = get_settings()
 
-os.environ["DISABLE_CACHE"] = "1"
+
+@pytest.fixture(autouse=True)
+def _disable_auth_rate_limit_by_default(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    if "low_rate_limits" in request.fixturenames:
+        return
+    monkeypatch.setattr(settings, "auth_rate_limit_enabled", False)
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "debug", True)
 
 
 @pytest.fixture(autouse=True)

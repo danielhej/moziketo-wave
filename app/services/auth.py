@@ -43,7 +43,9 @@ async def register_user(session: AsyncSession, data: RegisterRequest) -> UserRes
 
 async def login_user(session: AsyncSession, email: str, password: str) -> TokenResponse:
     user = await session.scalar(select(User).where(User.email == email.lower()))
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None or user.password_hash is None or not verify_password(
+        password, user.password_hash
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -51,10 +53,10 @@ async def login_user(session: AsyncSession, email: str, password: str) -> TokenR
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
 
-    return await _issue_tokens(user)
+    return await issue_tokens(user)
 
 
-async def _issue_tokens(user: User) -> TokenResponse:
+async def issue_tokens(user: User) -> TokenResponse:
     settings = get_settings()
     subject = str(user.id)
     access = create_access_token(subject)
