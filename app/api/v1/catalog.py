@@ -14,6 +14,7 @@ from app.schemas import (
     TrackListResponse,
 )
 from app.services import catalog as catalog_service
+from app.services.oauth import oauth_health_status
 from app.services.storage import check_s3
 
 router = APIRouter()
@@ -34,6 +35,8 @@ async def health(session: AsyncSession = Depends(get_db_session)) -> HealthRespo
         database="ok" if db_ok else "error",
         redis="ok" if redis_ok else "error",
         storage=storage_status,
+        oauth_google=oauth_health_status("google"),
+        oauth_github=oauth_health_status("github"),
     )
 
 

@@ -8,9 +8,19 @@ from app.core.config import get_settings
 from app.schemas.catalog import ArtistSummary, SearchResponse, TrackSummary
 
 
-def meili_configured() -> bool:
+def meili_available() -> bool:
     settings = get_settings()
-    return bool(settings.meili_url.strip() and settings.search_backend == "meili")
+    return bool(settings.meili_url.strip() and settings.meili_api_key.strip())
+
+
+def meili_search_enabled() -> bool:
+    settings = get_settings()
+    return meili_available() and settings.search_backend == "meili"
+
+
+def meili_configured() -> bool:
+    """Backward-compatible alias for search path."""
+    return meili_search_enabled()
 
 
 def _index_name(kind: str) -> str:
@@ -28,7 +38,7 @@ def _headers() -> dict[str, str]:
 
 
 async def ensure_indexes() -> None:
-    if not meili_configured():
+    if not meili_available():
         return
     settings = get_settings()
     async with httpx.AsyncClient(base_url=settings.meili_url.rstrip("/"), timeout=30) as client:
@@ -52,7 +62,7 @@ async def ensure_indexes() -> None:
 
 
 async def upsert_documents(kind: str, documents: list[dict[str, Any]]) -> None:
-    if not meili_configured() or not documents:
+    if not meili_available() or not documents:
         return
     settings = get_settings()
     index_uid = _index_name(kind)
@@ -65,7 +75,7 @@ async def upsert_documents(kind: str, documents: list[dict[str, Any]]) -> None:
 
 
 async def delete_document(kind: str, doc_id: str) -> None:
-    if not meili_configured():
+    if not meili_available():
         return
     settings = get_settings()
     index_uid = _index_name(kind)
@@ -74,7 +84,7 @@ async def delete_document(kind: str, doc_id: str) -> None:
 
 
 async def search_meili(*, q: str, limit: int) -> SearchResponse | None:
-    if not meili_configured():
+    if not meili_search_enabled():
         return None
     settings = get_settings()
     query = q.strip()

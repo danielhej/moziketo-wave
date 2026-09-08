@@ -67,7 +67,9 @@ jobs:
           scp deploy/web.env.example "${USER}@${HOST}:/opt/moziketo/web.env.example"
           scp deploy/postfix.env.example "${USER}@${HOST}:/opt/moziketo/postfix.env.example"
           scp deploy/cron/import-catalog.sh "${USER}@${HOST}:/opt/moziketo/cron/import-catalog.sh"
-          ssh "${USER}@${HOST}" "chmod +x /opt/moziketo/cron/import-catalog.sh"
+          scp deploy/cron/webhook-retry.sh "${USER}@${HOST}:/opt/moziketo/cron/webhook-retry.sh"
+          scp deploy/cron/prune-play-events.sh "${USER}@${HOST}:/opt/moziketo/cron/prune-play-events.sh"
+          ssh "${USER}@${HOST}" "chmod +x /opt/moziketo/cron/import-catalog.sh /opt/moziketo/cron/webhook-retry.sh /opt/moziketo/cron/prune-play-events.sh"
           ssh "${USER}@${HOST}" "test -f /opt/moziketo/postfix.env || cp /opt/moziketo/postfix.env.example /opt/moziketo/postfix.env"
 
       - name: Transfer wave image and deploy stack

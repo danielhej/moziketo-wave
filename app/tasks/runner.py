@@ -6,6 +6,7 @@ from app.db.session import SessionLocal
 from app.models.background_job import JobKind
 from app.models.webhook import WebhookEvent
 from app.services import admin_ops, import_wp
+from app.services.history import prune_all_users
 from app.services.webhooks import deliver_pending, emit_event
 
 
@@ -47,6 +48,17 @@ async def run_webhook_job(job_id: UUID) -> None:
         try:
             delivered = await deliver_pending(session)
             await admin_ops.mark_job_completed(session, job_id, {"delivered": delivered})
+        except Exception as exc:
+            await admin_ops.mark_job_failed(session, job_id, str(exc))
+            raise
+
+
+async def run_prune_plays_job(job_id: UUID) -> None:
+    async with SessionLocal() as session:
+        await admin_ops.mark_job_running(session, job_id)
+        try:
+            result = await prune_all_users(session)
+            await admin_ops.mark_job_completed(session, job_id, result)
         except Exception as exc:
             await admin_ops.mark_job_failed(session, job_id, str(exc))
             raise

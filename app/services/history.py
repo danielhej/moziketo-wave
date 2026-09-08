@@ -29,12 +29,12 @@ async def record_play(session: AsyncSession, user: User, track_slug: str) -> Non
     await _prune_user_events(session, user.id)
 
 
-async def _prune_user_events(session: AsyncSession, user_id: UUID) -> None:
+async def prune_user_events(session: AsyncSession, user_id: UUID) -> int:
     total = await session.scalar(
         select(func.count()).select_from(PlayEvent).where(PlayEvent.user_id == user_id)
     )
     if not total or total <= MAX_PLAY_EVENTS_PER_USER:
-        return
+        return 0
 
     excess = total - MAX_PLAY_EVENTS_PER_USER
     oldest_ids = (
@@ -45,6 +45,27 @@ async def _prune_user_events(session: AsyncSession, user_id: UUID) -> None:
     )
     await session.execute(delete(PlayEvent).where(PlayEvent.id.in_(oldest_ids)))
     await session.commit()
+    return excess
+
+
+async def prune_all_users(session: AsyncSession) -> dict[str, int]:
+    over_limit = await session.execute(
+        select(PlayEvent.user_id, func.count())
+        .group_by(PlayEvent.user_id)
+        .having(func.count() > MAX_PLAY_EVENTS_PER_USER)
+    )
+    users_pruned = 0
+    events_removed = 0
+    for user_id, _count in over_limit.all():
+        removed = await prune_user_events(session, user_id)
+        if removed:
+            users_pruned += 1
+            events_removed += removed
+    return {"users_pruned": users_pruned, "events_removed": events_removed}
+
+
+async def _prune_user_events(session: AsyncSession, user_id: UUID) -> None:
+    await prune_user_events(session, user_id)
 
 
 async def list_recent_history(

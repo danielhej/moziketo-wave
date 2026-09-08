@@ -4,7 +4,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import httpx
@@ -22,6 +22,19 @@ from app.services.auth import issue_tokens
 
 OAUTH_STATE_TTL = 600
 OAUTH_CODE_TTL = 60
+
+
+def oauth_provider_configured(provider: str) -> bool:
+    settings = get_settings()
+    if provider == OAuthProvider.GOOGLE:
+        return bool(settings.google_client_id.strip() and settings.google_client_secret.strip())
+    if provider == OAuthProvider.GITHUB:
+        return bool(settings.github_client_id.strip() and settings.github_client_secret.strip())
+    return False
+
+
+def oauth_health_status(provider: str) -> Literal["ok", "skipped"]:
+    return "ok" if oauth_provider_configured(provider) else "skipped"
 
 
 @dataclass

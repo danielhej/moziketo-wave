@@ -22,12 +22,23 @@ async def enqueue_reindex(session: AsyncSession) -> UUID:
     return job.id
 
 
+async def enqueue_webhook_retry(session: AsyncSession) -> UUID:
+    job = await admin_ops.create_job(session, kind=JobKind.WEBHOOK_DELIVERY, payload={})
+    await _dispatch(JobKind.WEBHOOK_DELIVERY, str(job.id))
+    return job.id
+
+
+async def enqueue_prune_plays(session: AsyncSession) -> UUID:
+    job = await admin_ops.create_job(session, kind=JobKind.PRUNE_PLAY_EVENTS, payload={})
+    await _dispatch(JobKind.PRUNE_PLAY_EVENTS, str(job.id))
+    return job.id
+
+
 async def enqueue_webhook_deliveries() -> None:
     from app.db.session import SessionLocal
 
     async with SessionLocal() as session:
-        job = await admin_ops.create_job(session, kind=JobKind.WEBHOOK_DELIVERY, payload={})
-    await _dispatch(JobKind.WEBHOOK_DELIVERY, str(job.id))
+        await enqueue_webhook_retry(session)
 
 
 async def _dispatch(kind: str, job_id: str, **kwargs: Any) -> None:
@@ -35,7 +46,12 @@ async def _dispatch(kind: str, job_id: str, **kwargs: Any) -> None:
     if settings.taskiq_inline:
         await _run_inline(kind, UUID(job_id), **kwargs)
         return
-    from app.tasks.worker import import_catalog_task, reindex_search_task, webhook_delivery_task
+    from app.tasks.worker import (
+        import_catalog_task,
+        prune_plays_task,
+        reindex_search_task,
+        webhook_delivery_task,
+    )
 
     if kind == JobKind.IMPORT_CATALOG:
         await import_catalog_task.kiq(job_id, kwargs.get("limit", 0))
@@ -43,10 +59,17 @@ async def _dispatch(kind: str, job_id: str, **kwargs: Any) -> None:
         await reindex_search_task.kiq(job_id)
     elif kind == JobKind.WEBHOOK_DELIVERY:
         await webhook_delivery_task.kiq(job_id)
+    elif kind == JobKind.PRUNE_PLAY_EVENTS:
+        await prune_plays_task.kiq(job_id)
 
 
 async def _run_inline(kind: str, job_id: UUID, **kwargs: Any) -> None:
-    from app.tasks.runner import run_import_job, run_reindex_job, run_webhook_job
+    from app.tasks.runner import (
+        run_import_job,
+        run_prune_plays_job,
+        run_reindex_job,
+        run_webhook_job,
+    )
 
     if kind == JobKind.IMPORT_CATALOG:
         await run_import_job(job_id, limit=int(kwargs.get("limit", 0)))
@@ -54,6 +77,8 @@ async def _run_inline(kind: str, job_id: UUID, **kwargs: Any) -> None:
         await run_reindex_job(job_id)
     elif kind == JobKind.WEBHOOK_DELIVERY:
         await run_webhook_job(job_id)
+    elif kind == JobKind.PRUNE_PLAY_EVENTS:
+        await run_prune_plays_job(job_id)
 
 
 async def get_job_response(session: AsyncSession, job_id: UUID) -> dict[str, Any] | None:

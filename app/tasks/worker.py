@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.tasks.broker import broker
-from app.tasks.runner import run_import_job, run_reindex_job, run_webhook_job
+from app.tasks.runner import run_import_job, run_prune_plays_job, run_reindex_job, run_webhook_job
 
 
 @broker.task
@@ -19,3 +19,8 @@ async def reindex_search_task(job_id: str) -> None:
 @broker.task
 async def webhook_delivery_task(job_id: str) -> None:
     await run_webhook_job(UUID(job_id))
+
+
+@broker.task
+async def prune_plays_task(job_id: str) -> None:
+    await run_prune_plays_job(UUID(job_id))

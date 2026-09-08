@@ -137,6 +137,32 @@ async def trigger_reindex(session: AsyncSession = Depends(get_db_session)) -> Im
 
 
 @router.post(
+    "/jobs/webhooks/retry",
+    response_model=ImportQueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_verify_admin_key)],
+)
+async def trigger_webhook_retry(
+    session: AsyncSession = Depends(get_db_session),
+) -> ImportQueuedResponse:
+    job_id = await jobs.enqueue_webhook_retry(session)
+    return ImportQueuedResponse(job_id=str(job_id))
+
+
+@router.post(
+    "/jobs/prune-plays",
+    response_model=ImportQueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_verify_admin_key)],
+)
+async def trigger_prune_plays(
+    session: AsyncSession = Depends(get_db_session),
+) -> ImportQueuedResponse:
+    job_id = await jobs.enqueue_prune_plays(session)
+    return ImportQueuedResponse(job_id=str(job_id))
+
+
+@router.post(
     "/import-json",
     response_model=ImportResult,
     dependencies=[Depends(_verify_admin_key)],

@@ -17,6 +17,7 @@ from app.schemas.admin_catalog import (
     AdminTrackPatch,
 )
 from app.services.cache import cache_delete_pattern
+from app.services.search_sync import sync_album, sync_artist, sync_track
 from app.services.webhooks import emit_event
 
 
@@ -37,6 +38,7 @@ async def patch_track(session: AsyncSession, slug: str, data: AdminTrackPatch) -
     await session.commit()
     await session.refresh(track)
     await _invalidate_catalog_cache()
+    await sync_track(session, track)
     return track
 
 
@@ -73,6 +75,7 @@ async def patch_artist(session: AsyncSession, slug: str, data: AdminArtistPatch)
     await session.commit()
     await session.refresh(artist)
     await _invalidate_catalog_cache()
+    await sync_artist(session, artist)
     return artist
 
 
@@ -151,6 +154,8 @@ async def create_album(session: AsyncSession, data: AdminAlbumCreate) -> Album:
     await session.commit()
     await session.refresh(album)
     await _invalidate_catalog_cache()
+    if album.published_at is not None:
+        await sync_album(session, album)
     return album
 
 
@@ -191,6 +196,7 @@ async def patch_album(session: AsyncSession, slug: str, data: AdminAlbumPatch) -
     await session.commit()
     await session.refresh(album)
     await _invalidate_catalog_cache()
+    await sync_album(session, album)
     return album
 
 

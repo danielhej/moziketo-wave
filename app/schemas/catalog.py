@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +16,16 @@ class HealthResponse(BaseModel):
         default="skipped",
         description="Object storage (S3) reachability",
         examples=["ok", "skipped", "error"],
+    )
+    oauth_google: Literal["ok", "skipped"] = Field(
+        default="skipped",
+        description="Google OAuth credentials configured",
+        examples=["ok", "skipped"],
+    )
+    oauth_github: Literal["ok", "skipped"] = Field(
+        default="skipped",
+        description="GitHub OAuth credentials configured",
+        examples=["ok", "skipped"],
     )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
