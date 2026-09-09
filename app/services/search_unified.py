@@ -81,6 +81,7 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
     cache_key = f"search:unified:{query}:{limit}"
     cached = await cache_get(cache_key)
     if cached is not None:
+        asyncio.create_task(warm_play_hits(cached.get("hits") or []))
         return SearchResponse.model_validate(cached)
 
     catalog_by_spotify: dict[str, Track] = {}

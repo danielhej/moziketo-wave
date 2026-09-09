@@ -49,6 +49,7 @@ class DownloaderJobStatusResponse(BaseModel):
     spotify_track_id: str
     s3_key: str
     size_bytes: int = 0
+    buffer_bytes: int = 0
     download_url: str | None = None
     presigned_url: str | None = None
     error: str | None = None

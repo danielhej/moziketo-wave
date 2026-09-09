@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
@@ -28,11 +29,31 @@ logger = logging.getLogger(__name__)
 SPOTIFY_KEY_RE = re.compile(r"^[A-Za-z0-9]{22}$")
 PLAY_SESSION_TTL = 3600
 PREVIEW_CACHE_TTL = 86400
+WARM_MIN_BUFFER = 32768
+WARM_POLL_INTERVAL = 0.25
+WARM_MAX_WAIT = 25.0
 
 
 async def cache_preview_url(key: str, preview_url: str | None) -> None:
     if preview_url:
         await cache_set(f"preview:{key}", preview_url, ttl=PREVIEW_CACHE_TTL)
+
+
+async def _wait_for_play_buffer(job_id: str, *, min_bytes: int = WARM_MIN_BUFFER) -> bool:
+    """Poll moz-downloader until enough audio is buffered for HTML5 canplay."""
+    deadline = time.monotonic() + WARM_MAX_WAIT
+    while time.monotonic() < deadline:
+        try:
+            job = await get_play_job(job_id)
+        except Exception:
+            await asyncio.sleep(WARM_POLL_INTERVAL)
+            continue
+        if job.status == "failed":
+            return False
+        if job.buffer_bytes >= min_bytes or job.status == "ready":
+            return True
+        await asyncio.sleep(WARM_POLL_INTERVAL)
+    return False
 
 
 async def warm_play_hit(
@@ -42,32 +63,35 @@ async def warm_play_hit(
     if not SPOTIFY_KEY_RE.match(key) or not downloader_configured():
         return
     await cache_preview_url(key, preview_url)
-    if await cache_get(f"play:session:{key}"):
+    cached = await cache_get(f"play:session:{key}")
+    if cached and cached.get("buffer_ready"):
         return
     try:
-        await _get_play_session(key, title_hint=title, artist_hint=artist)
+        session = cached or await _get_play_session(
+            key, title_hint=title, artist_hint=artist
+        )
+        ready = await _wait_for_play_buffer(session["job_id"])
+        session["buffer_ready"] = ready
+        await cache_set(f"play:session:{key}", session, ttl=PLAY_SESSION_TTL)
     except Exception:
         logger.debug("warm play failed for %s", key, exc_info=True)
 
 
 async def warm_play_hits(hits: list[dict]) -> None:
-    tasks = []
-    for hit in hits[:5]:
+    """Warm only the first Spotify hit — one yt-dlp job keeps VPS responsive."""
+    for hit in hits:
         if hit.get("in_catalog"):
             continue
         key = hit.get("key", "")
         if not SPOTIFY_KEY_RE.match(key):
             continue
-        tasks.append(
-            warm_play_hit(
-                key,
-                title=hit.get("title") or "",
-                artist=hit.get("artist_name") or "",
-                preview_url=hit.get("preview_url"),
-            )
+        await warm_play_hit(
+            key,
+            title=hit.get("title") or "",
+            artist=hit.get("artist_name") or "",
+            preview_url=hit.get("preview_url"),
         )
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
+        break
 
 
 async def _find_catalog_track(session: AsyncSession, key: str) -> Track | None:
@@ -138,6 +162,7 @@ async def _get_play_session(
         "artist": play.artist,
         "cover_url": meta.cover_url if meta else None,
         "preview_url": preview_url,
+        "buffer_ready": False,
     }
     if preview_url:
         await cache_set(f"preview:{key}", preview_url, ttl=PREVIEW_CACHE_TTL)
@@ -252,6 +277,10 @@ async def resolve_stream(
         return await proxy_audio(preview_url, range_header=range_header, filename=filename)
 
     play_session = await _start_full()
+    if not play_session.get("buffer_ready"):
+        ready = await _wait_for_play_buffer(play_session["job_id"], min_bytes=8192)
+        play_session["buffer_ready"] = ready
+        await cache_set(f"play:session:{key}", play_session, ttl=PLAY_SESSION_TTL)
     filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
     return await proxy_audio(
         play_session["stream_url"],
