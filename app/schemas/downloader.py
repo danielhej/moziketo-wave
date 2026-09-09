@@ -50,6 +50,7 @@ class DownloaderJobStatusResponse(BaseModel):
     s3_key: str
     size_bytes: int = 0
     buffer_bytes: int = 0
+    direct_ready: bool = False
     download_url: str | None = None
     presigned_url: str | None = None
     error: str | None = None
