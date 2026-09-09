@@ -61,12 +61,10 @@ async def search_tracks(q: str, *, limit: int = 20) -> list[SpotifyTrackHit]:
     if not token:
         return []
 
-    settings = get_settings()
     params = {
         "q": q.strip(),
         "type": "track",
         "limit": min(max(limit, 1), 50),
-        "market": settings.spotify_market,
     }
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.get(

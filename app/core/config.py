@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     # Spotify Web API (search + metadata)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
-    spotify_market: str = "IR"
 
     cors_origins: str = "http://localhost:3000,https://moziketo.ir"
 
