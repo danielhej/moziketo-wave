@@ -1,6 +1,7 @@
+from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,11 +29,17 @@ router = APIRouter(tags=["playback"])
 async def stream_by_key(
     key: str,
     request: Request,
+    title: Annotated[str | None, Query(description="Skip metadata lookup")] = None,
+    artist: Annotated[str | None, Query(description="Skip metadata lookup")] = None,
     session: AsyncSession = Depends(get_db_session),
     _: None = Depends(rate_limit_playback),
 ) -> StreamingResponse:
     return await stream_key.resolve_stream(
-        session, key, range_header=request.headers.get("range")
+        session,
+        key,
+        range_header=request.headers.get("range"),
+        title_hint=title,
+        artist_hint=artist,
     )
 
 

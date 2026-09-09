@@ -63,18 +63,27 @@ async def _catalog_stream(
     return await proxy_audio(resolved, range_header=range_header, filename=filename)
 
 
-async def _get_play_session(key: str) -> dict:
+async def _get_play_session(
+    key: str,
+    *,
+    title_hint: str | None = None,
+    artist_hint: str | None = None,
+) -> dict:
     cached = await cache_get(f"play:session:{key}")
     if cached:
         return cached
 
     spotify_url = f"https://open.spotify.com/track/{key}"
-    meta = await fetch_track(key)
+    meta = None
+    if not (title_hint and artist_hint):
+        meta = await fetch_track(key)
+    title = title_hint or (meta.title if meta else None)
+    artist = artist_hint or (meta.artist_name if meta else None)
     play = await start_play(
         DownloaderPlayRequest(
             spotify_url=spotify_url,
-            title=meta.title if meta else None,
-            artist=meta.artist_name if meta else None,
+            title=title,
+            artist=artist,
             key=f"{key}.mp3",
         )
     )
@@ -152,6 +161,8 @@ async def resolve_stream(
     key: str,
     *,
     range_header: str | None = None,
+    title_hint: str | None = None,
+    artist_hint: str | None = None,
 ) -> StreamingResponse:
     key = key.strip()
     if not key:
@@ -170,7 +181,9 @@ async def resolve_stream(
             detail="Stream service unavailable",
         )
 
-    play_session = await _get_play_session(key)
+    play_session = await _get_play_session(
+        key, title_hint=title_hint, artist_hint=artist_hint
+    )
     asyncio.create_task(
         _background_ingest(
             key,
