@@ -16,7 +16,8 @@ async def test_stream_increments_play_count(client: AsyncClient) -> None:
         before = await session.scalar(select(Track.stream_count).where(Track.slug == "bipolar"))
 
     response = await client.get("/api/v1/tracks/bipolar/stream", follow_redirects=False)
-    assert response.status_code == 302
+    assert response.status_code in (200, 206)
+    assert response.headers["content-type"].startswith("audio/")
 
     async with session_factory() as session:
         after = await session.scalar(select(Track.stream_count).where(Track.slug == "bipolar"))
