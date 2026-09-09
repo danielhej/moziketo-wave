@@ -78,10 +78,23 @@ class ArtistListResponse(BaseModel):
     page_size: int
 
 
+class SearchHit(BaseModel):
+    """Unified search row — use `key` with GET /stream/{key}."""
+
+    key: str = Field(description="Stream key (Spotify track id or catalog slug)")
+    title: str
+    artist_name: str
+    cover_url: str | None = None
+    duration_seconds: int | None = None
+    in_catalog: bool = Field(default=False, description="Already in moziketo catalog with audio")
+    slug: str | None = Field(default=None, description="Catalog slug when in_catalog")
+
+
 class SearchResponse(BaseModel):
-    """Combined search results across tracks and artists."""
+    """Combined search results — Spotify-first hits + local artists."""
 
     query: str = Field(description="Normalized search query")
+    hits: list[SearchHit] = Field(default_factory=list, description="Spotify-first unified results")
     tracks: list[TrackSummary] = Field(default_factory=list)
     artists: list[ArtistSummary] = Field(default_factory=list)
     track_total: int = Field(ge=0)

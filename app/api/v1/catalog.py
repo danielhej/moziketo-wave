@@ -14,6 +14,7 @@ from app.schemas import (
     TrackListResponse,
 )
 from app.services import catalog as catalog_service
+from app.services import search_unified
 from app.services.oauth import oauth_health_status
 from app.services.storage import check_s3
 
@@ -121,12 +122,15 @@ async def get_artist(
     response_model=SearchResponse,
     tags=["catalog"],
     summary="Search catalog",
-    description="Search tracks and artists by title, name, or slug (case-insensitive).",
+    description=(
+        "Spotify-first search merged with local catalog. "
+        "Use hits[].key with GET /stream/{key}."
+    ),
 )
 async def search_catalog(
     q: Annotated[str, Query(min_length=2, description="Search term (min 2 chars)")],
-    limit: Annotated[int, Query(ge=1, le=50, description="Max results per type")] = 24,
+    limit: Annotated[int, Query(ge=1, le=50, description="Max unified hits")] = 24,
     session: AsyncSession = Depends(get_db_session),
     _: None = Depends(rate_limit_search),
 ) -> SearchResponse:
-    return await catalog_service.search_catalog(session, q=q, limit=limit)
+    return await search_unified.unified_search(session, q=q, limit=limit)

@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     downloader_url: str = ""
     downloader_secret: str = ""
 
+    # Spotify Web API (search + metadata)
+    spotify_client_id: str = ""
+    spotify_client_secret: str = ""
+    spotify_market: str = "IR"
+
     cors_origins: str = "http://localhost:3000,https://moziketo.ir"
 
     cache_ttl_seconds: int = 120
