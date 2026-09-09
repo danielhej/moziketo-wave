@@ -39,9 +39,11 @@ async def cache_preview_url(key: str, preview_url: str | None) -> None:
         await cache_set(f"preview:{key}", preview_url, ttl=PREVIEW_CACHE_TTL)
 
 
-async def _wait_for_play_buffer(job_id: str, *, min_bytes: int = WARM_MIN_BUFFER) -> bool:
+async def _wait_for_play_buffer(
+    job_id: str, *, min_bytes: int = WARM_MIN_BUFFER, max_wait: float = WARM_MAX_WAIT
+) -> bool:
     """Poll moz-downloader until enough audio is buffered for HTML5 canplay."""
-    deadline = time.monotonic() + WARM_MAX_WAIT
+    deadline = time.monotonic() + max_wait
     while time.monotonic() < deadline:
         try:
             job = await get_play_job(job_id)
@@ -57,7 +59,12 @@ async def _wait_for_play_buffer(job_id: str, *, min_bytes: int = WARM_MIN_BUFFER
 
 
 async def warm_play_hit(
-    key: str, *, title: str, artist: str, preview_url: str | None = None
+    key: str,
+    *,
+    title: str,
+    artist: str,
+    preview_url: str | None = None,
+    max_wait: float = WARM_MAX_WAIT,
 ) -> None:
     """Prefetch downloader job on search so play starts with buffered audio."""
     if not SPOTIFY_KEY_RE.match(key) or not downloader_configured():
@@ -70,14 +77,14 @@ async def warm_play_hit(
         session = cached or await _get_play_session(
             key, title_hint=title, artist_hint=artist
         )
-        ready = await _wait_for_play_buffer(session["job_id"])
+        ready = await _wait_for_play_buffer(session["job_id"], max_wait=max_wait)
         session["buffer_ready"] = ready
         await cache_set(f"play:session:{key}", session, ttl=PLAY_SESSION_TTL)
     except Exception:
         logger.debug("warm play failed for %s", key, exc_info=True)
 
 
-async def warm_play_hits(hits: list[dict]) -> None:
+async def warm_play_hits(hits: list[dict], *, max_wait: float = WARM_MAX_WAIT) -> None:
     """Warm only the first Spotify hit — one yt-dlp job keeps VPS responsive."""
     for hit in hits:
         if hit.get("in_catalog"):
@@ -90,6 +97,7 @@ async def warm_play_hits(hits: list[dict]) -> None:
             title=hit.get("title") or "",
             artist=hit.get("artist_name") or "",
             preview_url=hit.get("preview_url"),
+            max_wait=max_wait,
         )
         break
 
