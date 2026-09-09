@@ -27,6 +27,47 @@ logger = logging.getLogger(__name__)
 
 SPOTIFY_KEY_RE = re.compile(r"^[A-Za-z0-9]{22}$")
 PLAY_SESSION_TTL = 3600
+PREVIEW_CACHE_TTL = 86400
+
+
+async def cache_preview_url(key: str, preview_url: str | None) -> None:
+    if preview_url:
+        await cache_set(f"preview:{key}", preview_url, ttl=PREVIEW_CACHE_TTL)
+
+
+async def warm_play_hit(
+    key: str, *, title: str, artist: str, preview_url: str | None = None
+) -> None:
+    """Prefetch downloader job on search so play starts with buffered audio."""
+    if not SPOTIFY_KEY_RE.match(key) or not downloader_configured():
+        return
+    await cache_preview_url(key, preview_url)
+    if await cache_get(f"play:session:{key}"):
+        return
+    try:
+        await _get_play_session(key, title_hint=title, artist_hint=artist)
+    except Exception:
+        logger.debug("warm play failed for %s", key, exc_info=True)
+
+
+async def warm_play_hits(hits: list[dict]) -> None:
+    tasks = []
+    for hit in hits[:5]:
+        if hit.get("in_catalog"):
+            continue
+        key = hit.get("key", "")
+        if not SPOTIFY_KEY_RE.match(key):
+            continue
+        tasks.append(
+            warm_play_hit(
+                key,
+                title=hit.get("title") or "",
+                artist=hit.get("artist_name") or "",
+                preview_url=hit.get("preview_url"),
+            )
+        )
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _find_catalog_track(session: AsyncSession, key: str) -> Track | None:
@@ -87,13 +128,19 @@ async def _get_play_session(
             key=f"{key}.mp3",
         )
     )
+    preview_url = None
+    if meta and meta.preview_url:
+        preview_url = meta.preview_url
     session_data = {
         "job_id": play.job_id,
         "stream_url": play.stream_url,
         "title": play.title,
         "artist": play.artist,
         "cover_url": meta.cover_url if meta else None,
+        "preview_url": preview_url,
     }
+    if preview_url:
+        await cache_set(f"preview:{key}", preview_url, ttl=PREVIEW_CACHE_TTL)
     await cache_set(f"play:session:{key}", session_data, ttl=PLAY_SESSION_TTL)
     return session_data
 
@@ -181,19 +228,30 @@ async def resolve_stream(
             detail="Stream service unavailable",
         )
 
-    play_session = await _get_play_session(
-        key, title_hint=title_hint, artist_hint=artist_hint
-    )
-    asyncio.create_task(
-        _background_ingest(
-            key,
-            play_session["job_id"],
-            play_session["title"],
-            play_session["artist"],
-            play_session.get("cover_url"),
-        )
-    )
+    preview_url = await cache_get(f"preview:{key}")
+    had_session = await cache_get(f"play:session:{key}") is not None
 
+    async def _start_full() -> dict:
+        session = await _get_play_session(
+            key, title_hint=title_hint, artist_hint=artist_hint
+        )
+        asyncio.create_task(
+            _background_ingest(
+                key,
+                session["job_id"],
+                session["title"],
+                session["artist"],
+                session.get("cover_url"),
+            )
+        )
+        return session
+
+    if preview_url and not had_session:
+        asyncio.create_task(_start_full())
+        filename = f"{slugify(artist_hint or 'track')}.mp3"
+        return await proxy_audio(preview_url, range_header=range_header, filename=filename)
+
+    play_session = await _start_full()
     filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
     return await proxy_audio(
         play_session["stream_url"],

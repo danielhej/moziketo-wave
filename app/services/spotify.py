@@ -20,6 +20,7 @@ class SpotifyTrackHit:
     artist_name: str
     cover_url: str | None
     duration_seconds: int | None
+    preview_url: str | None = None
 
 
 def spotify_configured() -> bool:
@@ -92,6 +93,7 @@ async def search_tracks(q: str, *, limit: int = 20) -> list[SpotifyTrackHit]:
                 artist_name=artist_name,
                 cover_url=cover,
                 duration_seconds=(item.get("duration_ms") or 0) // 1000 or None,
+                preview_url=item.get("preview_url"),
             )
         )
     return hits
@@ -117,4 +119,5 @@ async def fetch_track(key: str) -> SpotifyTrackHit | None:
         artist_name=artists[0].get("name", "") if artists else "",
         cover_url=images[0].get("url") if images else None,
         duration_seconds=(item.get("duration_ms") or 0) // 1000 or None,
+        preview_url=item.get("preview_url"),
     )

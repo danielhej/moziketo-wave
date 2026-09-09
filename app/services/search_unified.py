@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,6 +18,7 @@ from app.services.catalog import (
 )
 from app.services.spotify import search_tracks as spotify_search
 from app.services.spotify import spotify_configured
+from app.services.stream_key import cache_preview_url, warm_play_hits
 
 
 async def _local_tracks(session: AsyncSession, *, q: str, limit: int) -> list[Track]:
@@ -93,6 +96,8 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
         for sp in await spotify_search(query, limit=limit):
             in_cat = sp.key in catalog_by_spotify
             track = catalog_by_spotify.get(sp.key)
+            if not in_cat and sp.preview_url:
+                await cache_preview_url(sp.key, sp.preview_url)
             hits.append(
                 SearchHit(
                     key=sp.key,
@@ -134,5 +139,7 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
         track_total=len(hits),
         artist_total=len(artists),
     )
-    await cache_set(cache_key, response.model_dump(mode="json"))
+    payload = response.model_dump(mode="json")
+    await cache_set(cache_key, payload)
+    asyncio.create_task(warm_play_hits(payload.get("hits") or []))
     return response
