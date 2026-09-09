@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 SPOTIFY_KEY_RE = re.compile(r"^[A-Za-z0-9]{22}$")
 PLAY_SESSION_TTL = 3600
 PREVIEW_CACHE_TTL = 86400
-WARM_POLL_INTERVAL = 0.2
-WARM_MAX_WAIT = 20.0
+YT_DIRECT_TTL = 4 * 3600
+WARM_POLL_INTERVAL = 0.15
+WARM_MAX_WAIT = 25.0
+CLICK_MAX_WAIT = 2.0
 
 
 async def cache_preview_url(key: str, preview_url: str | None) -> None:
@@ -38,10 +40,47 @@ async def cache_preview_url(key: str, preview_url: str | None) -> None:
         await cache_set(f"preview:{key}", preview_url, ttl=PREVIEW_CACHE_TTL)
 
 
+async def cache_direct_url(key: str, url: str, media_type: str) -> None:
+    await cache_set(
+        f"yt:direct:{key}",
+        {"url": url, "media_type": media_type},
+        ttl=YT_DIRECT_TTL,
+    )
+
+
+async def get_cached_direct(key: str) -> dict | None:
+    return await cache_get(f"yt:direct:{key}")
+
+
+async def _sync_direct_from_job(key: str, job_id: str) -> dict | None:
+    try:
+        job = await get_play_job(job_id)
+    except Exception:
+        return None
+    if not job.direct_ready or not job.direct_stream_url:
+        return None
+    media_type = job.direct_media_type or "audio/mp4"
+    await cache_direct_url(key, job.direct_stream_url, media_type)
+    return {"url": job.direct_stream_url, "media_type": media_type}
+
+
+async def _proxy_cached_direct(
+    direct: dict,
+    *,
+    range_header: str | None,
+    filename: str,
+) -> StreamingResponse:
+    return await proxy_audio(
+        direct["url"],
+        range_header=range_header,
+        filename=filename,
+    )
+
+
 async def _wait_for_direct_ready(
     job_id: str, *, max_wait: float = WARM_MAX_WAIT
 ) -> bool:
-    """Poll moz-downloader until YouTube CDN URL is resolved for instant play."""
+    """Poll moz-downloader until YouTube CDN URL is resolved."""
     deadline = time.monotonic() + max_wait
     while time.monotonic() < deadline:
         try:
@@ -51,7 +90,7 @@ async def _wait_for_direct_ready(
             continue
         if job.status == "failed":
             return False
-        if job.direct_ready or job.buffer_bytes >= 32768 or job.status == "ready":
+        if job.direct_ready:
             return True
         await asyncio.sleep(WARM_POLL_INTERVAL)
     return False
@@ -64,27 +103,33 @@ async def warm_play_hit(
     artist: str,
     preview_url: str | None = None,
     max_wait: float = WARM_MAX_WAIT,
-) -> None:
-    """Resolve YouTube direct URL on search so play proxies CDN instantly."""
+) -> bool:
+    """Prefetch YouTube CDN URL so click-to-play stays under CLICK_MAX_WAIT."""
     if not SPOTIFY_KEY_RE.match(key) or not downloader_configured():
-        return
+        return False
+    if await get_cached_direct(key):
+        return True
     await cache_preview_url(key, preview_url)
     cached = await cache_get(f"play:session:{key}")
     if cached and cached.get("direct_ready"):
-        return
+        await _sync_direct_from_job(key, cached["job_id"])
+        return True
     try:
         session = cached or await _get_play_session(
             key, title_hint=title, artist_hint=artist
         )
         ready = await _wait_for_direct_ready(session["job_id"], max_wait=max_wait)
         session["direct_ready"] = ready
+        if ready:
+            await _sync_direct_from_job(key, session["job_id"])
         await cache_set(f"play:session:{key}", session, ttl=PLAY_SESSION_TTL)
+        return ready
     except Exception:
         logger.debug("warm play failed for %s", key, exc_info=True)
+        return False
 
 
 async def warm_play_hits(hits: list[dict], *, max_wait: float = WARM_MAX_WAIT) -> None:
-    """Warm only the first Spotify hit — one yt-dlp resolve keeps VPS responsive."""
     for hit in hits:
         if hit.get("in_catalog"):
             continue
@@ -99,6 +144,34 @@ async def warm_play_hits(hits: list[dict], *, max_wait: float = WARM_MAX_WAIT) -
             max_wait=max_wait,
         )
         break
+
+
+async def warm_track(
+    key: str,
+    *,
+    title: str | None = None,
+    artist: str | None = None,
+) -> dict:
+    """Explicit warm before play click — call when track row is visible."""
+    if not SPOTIFY_KEY_RE.match(key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid key")
+    direct = await get_cached_direct(key)
+    if direct:
+        return {"status": "ready", "source": "cache"}
+    session = await cache_get(f"play:session:{key}")
+    if session and session.get("direct_ready"):
+        return {"status": "ready", "source": "session"}
+    if not downloader_configured():
+        return {"status": "unavailable"}
+    asyncio.create_task(
+        warm_play_hit(
+            key,
+            title=title or "",
+            artist=artist or "",
+            max_wait=WARM_MAX_WAIT,
+        )
+    )
+    return {"status": "warming"}
 
 
 async def _find_catalog_track(session: AsyncSession, key: str) -> Track | None:
@@ -235,6 +308,68 @@ async def _background_ingest(
         logger.exception("background ingest failed for %s", key)
 
 
+async def _stream_spotify_hit(
+    key: str,
+    *,
+    range_header: str | None,
+    title_hint: str | None,
+    artist_hint: str | None,
+) -> StreamingResponse:
+    """Click path: cached CDN → wait 2s → preview fallback → downloader proxy."""
+    direct = await get_cached_direct(key)
+    if direct:
+        name = slugify(artist_hint or "track")
+        return await _proxy_cached_direct(
+            direct, range_header=range_header, filename=f"{name}.mp3"
+        )
+
+    play_session = await _get_play_session(
+        key, title_hint=title_hint, artist_hint=artist_hint
+    )
+    asyncio.create_task(
+        _background_ingest(
+            key,
+            play_session["job_id"],
+            play_session["title"],
+            play_session["artist"],
+            play_session.get("cover_url"),
+        )
+    )
+
+    if play_session.get("direct_ready"):
+        synced = await _sync_direct_from_job(key, play_session["job_id"])
+        if synced:
+            filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
+            return await _proxy_cached_direct(
+                synced, range_header=range_header, filename=filename
+            )
+
+    ready = await _wait_for_direct_ready(
+        play_session["job_id"], max_wait=CLICK_MAX_WAIT
+    )
+    if ready:
+        synced = await _sync_direct_from_job(key, play_session["job_id"])
+        play_session["direct_ready"] = True
+        await cache_set(f"play:session:{key}", play_session, ttl=PLAY_SESSION_TTL)
+        if synced:
+            filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
+            return await _proxy_cached_direct(
+                synced, range_header=range_header, filename=filename
+            )
+
+    preview_url = play_session.get("preview_url") or await cache_get(f"preview:{key}")
+    if preview_url:
+        filename = f"{slugify(play_session['artist'])}-preview.mp3"
+        return await proxy_audio(preview_url, range_header=range_header, filename=filename)
+
+    filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
+    return await proxy_audio(
+        play_session["stream_url"],
+        range_header=range_header,
+        filename=filename,
+    )
+
+
 async def resolve_stream(
     session: AsyncSession,
     key: str,
@@ -260,37 +395,9 @@ async def resolve_stream(
             detail="Stream service unavailable",
         )
 
-    preview_url = await cache_get(f"preview:{key}")
-    had_session = await cache_get(f"play:session:{key}") is not None
-
-    async def _start_full() -> dict:
-        play_session = await _get_play_session(
-            key, title_hint=title_hint, artist_hint=artist_hint
-        )
-        asyncio.create_task(
-            _background_ingest(
-                key,
-                play_session["job_id"],
-                play_session["title"],
-                play_session["artist"],
-                play_session.get("cover_url"),
-            )
-        )
-        return play_session
-
-    if preview_url and not had_session:
-        asyncio.create_task(_start_full())
-        filename = f"{slugify(artist_hint or 'track')}.mp3"
-        return await proxy_audio(preview_url, range_header=range_header, filename=filename)
-
-    play_session = await _start_full()
-    if not play_session.get("direct_ready"):
-        ready = await _wait_for_direct_ready(play_session["job_id"], max_wait=15.0)
-        play_session["direct_ready"] = ready
-        await cache_set(f"play:session:{key}", play_session, ttl=PLAY_SESSION_TTL)
-    filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
-    return await proxy_audio(
-        play_session["stream_url"],
+    return await _stream_spotify_hit(
+        key,
         range_header=range_header,
-        filename=filename,
+        title_hint=title_hint,
+        artist_hint=artist_hint,
     )

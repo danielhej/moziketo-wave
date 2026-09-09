@@ -13,6 +13,23 @@ from app.services.audio_proxy import proxy_audio
 router = APIRouter(tags=["playback"])
 
 
+@router.post(
+    "/warm/{key}",
+    summary="Prefetch stream before play click",
+    description=(
+        "Call when a track row is visible (before play). "
+        "Returns ready when CDN URL is cached — then play is under 2s."
+    ),
+)
+async def warm_track(
+    key: str,
+    title: Annotated[str | None, Query()] = None,
+    artist: Annotated[str | None, Query()] = None,
+    _: None = Depends(rate_limit_playback),
+) -> dict:
+    return await stream_key.warm_track(key, title=title, artist=artist)
+
+
 @router.get(
     "/stream/{key}",
     response_model=None,

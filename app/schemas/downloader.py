@@ -51,6 +51,8 @@ class DownloaderJobStatusResponse(BaseModel):
     size_bytes: int = 0
     buffer_bytes: int = 0
     direct_ready: bool = False
+    direct_stream_url: str | None = None
+    direct_media_type: str | None = None
     download_url: str | None = None
     presigned_url: str | None = None
     error: str | None = None
