@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -81,7 +79,7 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
     cache_key = f"search:unified:{query}:{limit}"
     cached = await cache_get(cache_key)
     if cached is not None:
-        asyncio.create_task(warm_play_hits(cached.get("hits") or []))
+        await warm_play_hits(cached.get("hits") or [], max_wait=8.0)
         return SearchResponse.model_validate(cached)
 
     catalog_by_spotify: dict[str, Track] = {}
@@ -142,5 +140,5 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
     )
     payload = response.model_dump(mode="json")
     await cache_set(cache_key, payload)
-    asyncio.create_task(warm_play_hits(payload.get("hits") or []))
+    await warm_play_hits(payload.get("hits") or [], max_wait=8.0)
     return response
