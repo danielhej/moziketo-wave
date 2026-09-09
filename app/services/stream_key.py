@@ -5,18 +5,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-import httpx
 from fastapi import HTTPException, status
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import SessionLocal
 from app.models import Artist, Track
 from app.schemas.downloader import DownloaderPlayRequest
+from app.services.audio_proxy import proxy_audio
 from app.services.cache import cache_get, cache_set
 from app.services.downloader import downloader_configured, get_play_job, start_play
 from app.services.import_catalog import slugify
@@ -46,7 +45,12 @@ async def _find_catalog_track(session: AsyncSession, key: str) -> Track | None:
     return result.scalar_one_or_none()
 
 
-async def _catalog_redirect(session: AsyncSession, track: Track) -> RedirectResponse:
+async def _catalog_stream(
+    session: AsyncSession,
+    track: Track,
+    *,
+    range_header: str | None,
+) -> StreamingResponse:
     url = resolve_audio_url(track.slug, track.audio_url)
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not available")
@@ -55,7 +59,8 @@ async def _catalog_redirect(session: AsyncSession, track: Track) -> RedirectResp
     )
     await session.commit()
     resolved = await resolve_media_url(url)
-    return RedirectResponse(url=resolved, status_code=302)
+    filename = f"{track.slug}.mp3"
+    return await proxy_audio(resolved, range_header=range_header, filename=filename)
 
 
 async def _get_play_session(key: str) -> dict:
@@ -82,19 +87,6 @@ async def _get_play_session(key: str) -> dict:
     }
     await cache_set(f"play:session:{key}", session_data, ttl=PLAY_SESSION_TTL)
     return session_data
-
-
-async def _proxy_stream(stream_url: str) -> AsyncIterator[bytes]:
-    async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=15.0)) as client:
-        async with client.stream("GET", stream_url) as response:
-            if response.status_code >= 400:
-                body = await response.aread()
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=body.decode(errors="replace")[:300],
-                )
-            async for chunk in response.aiter_bytes():
-                yield chunk
 
 
 async def _background_ingest(
@@ -155,14 +147,19 @@ async def _background_ingest(
         logger.exception("background ingest failed for %s", key)
 
 
-async def resolve_stream(session: AsyncSession, key: str) -> RedirectResponse | StreamingResponse:
+async def resolve_stream(
+    session: AsyncSession,
+    key: str,
+    *,
+    range_header: str | None = None,
+) -> StreamingResponse:
     key = key.strip()
     if not key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid key")
 
     track = await _find_catalog_track(session, key)
     if track is not None and resolve_audio_url(track.slug, track.audio_url):
-        return await _catalog_redirect(session, track)
+        return await _catalog_stream(session, track, range_header=range_header)
 
     if not SPOTIFY_KEY_RE.match(key):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
@@ -185,13 +182,8 @@ async def resolve_stream(session: AsyncSession, key: str) -> RedirectResponse | 
     )
 
     filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "no-cache",
-        "Content-Disposition": f'inline; filename="{filename}"',
-    }
-    return StreamingResponse(
-        _proxy_stream(play_session["stream_url"]),
-        media_type="audio/mpeg",
-        headers=headers,
+    return await proxy_audio(
+        play_session["stream_url"],
+        range_header=range_header,
+        filename=filename,
     )

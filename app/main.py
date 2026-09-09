@@ -114,6 +114,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Accept-Ranges", "Content-Range", "Content-Length", "Content-Type"],
     )
 
     app.include_router(v1_router, prefix=settings.api_v1_prefix)
