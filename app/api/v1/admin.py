@@ -20,8 +20,9 @@ from app.schemas.admin_ops import (
     AdminUsersResponse,
     ImportStatusResponse,
 )
+from app.schemas.downloader import DownloaderIngestRequest, DownloaderIngestResponse
 from app.schemas.jobs import ImportQueuedResponse, JobResponse
-from app.services import admin_catalog, admin_ops, import_catalog, import_wp, jobs
+from app.services import admin_catalog, admin_ops, downloader, import_catalog, import_wp, jobs
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -291,3 +292,13 @@ async def unpublish_album(
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     await admin_catalog.unpublish_album(session, slug)
+
+
+@router.post(
+    "/ingest/download",
+    response_model=DownloaderIngestResponse,
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Download Spotify track via moz-downloader → S3",
+)
+async def ingest_download(payload: DownloaderIngestRequest) -> DownloaderIngestResponse:
+    return await downloader.ingest_spotify(payload)

@@ -6,6 +6,7 @@
 |------|------|
 | **moziketo-wave** (this) | FastAPI API — PostgreSQL catalog |
 | [moz](https://github.com/thereisnofork/moz) | Next.js frontend |
+| [moz-downloader](https://github.com/danielhej/moz-downloader) | Spotify ingest → S3 (`130.185.120.239`) |
 | **moziketo-hand** | Production server `95.38.191.28` |
 
 ## Stack
@@ -157,6 +158,18 @@ Auth endpoints keep separate limits (`AUTH_RATE_LIMIT_ENABLED`).
 - Stream/download URLs use **presigned S3 GET** when media is in your bucket (`S3_UPLOAD_ACL=private`)
 
 **Scheduled sync:** copy [`deploy/cron/import-catalog.sh`](deploy/cron/import-catalog.sh) to `/opt/moziketo/cron/` and add crontab `0 */6 * * *` (expects HTTP **202** from async import).
+
+### Ingest downloader
+
+Spotify → S3 ingest runs on **[moz-downloader](https://github.com/danielhej/moz-downloader)** (`130.185.120.239`).
+
+```http
+POST /api/v1/admin/ingest/download
+X-Admin-Key: ...
+{"spotify_url":"...","title":"...","artist":"...","key":"slug.mp3"}
+```
+
+Env: `DOWNLOADER_URL`, `DOWNLOADER_SECRET` (see `deploy/wave.env.example`).
 
 ### Building an admin UI
 

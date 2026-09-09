@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Moziketo Wave
 
-FastAPI backend for موزیکتو. PostgreSQL catalog. Pairs with `thereisnofork/moz`.
+FastAPI backend for موزیکتو. PostgreSQL catalog. Pairs with `thereisnofork/moz` and `danielhej/moz-downloader`.
 
 ## Server
 

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     wp_api_base_url: str = "https://moziketo.ir/wp-json"
     admin_api_key: str = ""
 
+    # Ingest downloader (moz-downloader VPS)
+    downloader_url: str = ""
+    downloader_secret: str = ""
+
     cors_origins: str = "http://localhost:3000,https://moziketo.ir"
 
     cache_ttl_seconds: int = 120
