@@ -345,11 +345,18 @@ async def _stream_spotify_hit(
         filename = f"{slugify(play_session['artist'])}-preview.mp3"
         return await proxy_audio(preview_url, range_header=range_header, filename=filename)
 
-    filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
-    return await proxy_audio(
-        play_session["stream_url"],
-        range_header=range_header,
-        filename=filename,
+    asyncio.create_task(
+        warm_play_hit(
+            key,
+            title=play_session["title"],
+            artist=play_session["artist"],
+            preview_url=preview_url,
+        )
+    )
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Stream not ready — call POST /warm/{key} before play",
+        headers={"Retry-After": "3"},
     )
 
 
