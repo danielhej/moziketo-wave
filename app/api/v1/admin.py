@@ -20,7 +20,13 @@ from app.schemas.admin_ops import (
     AdminUsersResponse,
     ImportStatusResponse,
 )
-from app.schemas.downloader import DownloaderIngestRequest, DownloaderIngestResponse
+from app.schemas.downloader import (
+    DownloaderIngestRequest,
+    DownloaderIngestResponse,
+    DownloaderJobStatusResponse,
+    DownloaderPlayRequest,
+    DownloaderPlayResponse,
+)
 from app.schemas.jobs import ImportQueuedResponse, JobResponse
 from app.services import admin_catalog, admin_ops, downloader, import_catalog, import_wp, jobs
 
@@ -302,3 +308,23 @@ async def unpublish_album(
 )
 async def ingest_download(payload: DownloaderIngestRequest) -> DownloaderIngestResponse:
     return await downloader.ingest_spotify(payload)
+
+
+@router.post(
+    "/ingest/play",
+    response_model=DownloaderPlayResponse,
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Start Spotify play — instant stream URL + background S3 upload",
+)
+async def ingest_play(payload: DownloaderPlayRequest) -> DownloaderPlayResponse:
+    return await downloader.start_play(payload)
+
+
+@router.get(
+    "/ingest/jobs/{job_id}",
+    response_model=DownloaderJobStatusResponse,
+    dependencies=[Depends(_verify_admin_key)],
+    summary="Poll play job — download_url when S3 upload finishes",
+)
+async def ingest_job_status(job_id: str) -> DownloaderJobStatusResponse:
+    return await downloader.get_play_job(job_id)
