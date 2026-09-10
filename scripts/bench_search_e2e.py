@@ -39,10 +39,16 @@ def main() -> None:
 
     for h in hits[:6]:
         state = h.get("play_state") or ("catalog" if h.get("in_catalog") else "-")
-        print(f"  {h.get('title','?')[:32]:32} state={state} job={h.get('job_id','')[:8] if h.get('job_id') else '-'}")
+        job = h.get("job_id") or ""
+        job_short = job[:8] if job else "-"
+        title = (h.get("title") or "?")[:32]
+        print(f"  {title:32} state={state} job={job_short}")
 
     if not ready:
-        print("No ready hit in search response (set PREPARE_SEARCH_WAIT_SEC=25 on wave for full wait)")
+        print(
+            "No ready hit in search response "
+            "(set PREPARE_SEARCH_WAIT_SEC=25 on wave for full wait)"
+        )
         # Stream may still work if background prepare finished — try first non-catalog hit
         nc = [h for h in hits if not h.get("in_catalog") and h.get("key")]
         if not nc:
@@ -58,7 +64,8 @@ def main() -> None:
     with urllib.request.urlopen(sreq, timeout=30) as resp:
         chunk = resp.read(8192)
     ttfb_ms = round((time.perf_counter() - t1) * 1000)
-    print(f"\nstream key={hit['key']} ttfb={ttfb_ms}ms bytes={len(chunk)} type={resp.headers.get('Content-Type')}")
+    ctype = resp.headers.get("Content-Type")
+    print(f"\nstream key={hit['key']} ttfb={ttfb_ms}ms bytes={len(chunk)} type={ctype}")
     print(f"total search→audio start ≈ {search_ms + ttfb_ms}ms (if click immediately after search)")
 
 

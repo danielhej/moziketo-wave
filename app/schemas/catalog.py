@@ -92,7 +92,9 @@ class SearchHit(BaseModel):
         default=None,
         description="ready | buffering | failed — set for non-catalog Spotify hits after prepare",
     )
-    buffer_bytes: int | None = Field(default=None, description="Downloader buffer when play_state is set")
+    buffer_bytes: int | None = Field(
+        default=None, description="Downloader buffer when play_state is set"
+    )
     job_id: str | None = Field(default=None, description="moz-downloader job id when prepared")
 
 

@@ -24,7 +24,9 @@ PLAY_SESSION_TTL = 3600
 YT_READY_TTL = 45 * 60  # match moz-downloader direct URL cache TTL
 
 
-async def _cache_prepared_session(key: str, *, job_id: str, stream_url: str, title: str, artist: str) -> None:
+async def _cache_prepared_session(
+    key: str, *, job_id: str, stream_url: str, title: str, artist: str
+) -> None:
     session = {
         "job_id": job_id,
         "stream_url": stream_url,

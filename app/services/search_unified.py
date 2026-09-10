@@ -20,8 +20,8 @@ from app.services.catalog import (
 )
 from app.services.downloader import downloader_configured
 from app.services.prepare_play import prepare_single_hit
+from app.services.spotify import SpotifyTrackHit, spotify_configured
 from app.services.spotify import search_tracks as spotify_search
-from app.services.spotify import spotify_configured, SpotifyTrackHit
 from app.services.stream_key import cache_preview_url
 
 logger = logging.getLogger(__name__)
