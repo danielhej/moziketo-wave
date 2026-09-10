@@ -32,7 +32,6 @@ PREVIEW_CACHE_TTL = 86400
 YT_DIRECT_TTL = 4 * 3600
 WARM_POLL_INTERVAL = 0.15
 WARM_MAX_WAIT = 25.0
-CLICK_MAX_WAIT = 2.0
 
 
 async def cache_preview_url(key: str, preview_url: str | None) -> None:
@@ -303,7 +302,7 @@ async def _stream_spotify_hit(
     title_hint: str | None,
     artist_hint: str | None,
 ) -> StreamingResponse:
-    """Click path: cached ready → wait 2s → preview fallback → downloader proxy."""
+    """Click → immediate chunked stream via moz-downloader (pipe or CDN)."""
     cached = await get_cached_play_ready(key)
     if cached:
         filename = f"{slugify(cached['artist'])}-{slugify(cached['title'])}.mp3"
@@ -323,40 +322,20 @@ async def _stream_spotify_hit(
             play_session.get("cover_url"),
         )
     )
-
-    if play_session.get("direct_ready"):
-        filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
-        return await proxy_audio(
-            play_session["stream_url"], range_header=range_header, filename=filename
-        )
-
-    ready = await _wait_for_direct_ready(
-        play_session["job_id"], max_wait=CLICK_MAX_WAIT
-    )
-    if ready:
-        play_session = await _mark_play_ready(key, play_session)
-        filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
-        return await proxy_audio(
-            play_session["stream_url"], range_header=range_header, filename=filename
-        )
-
-    preview_url = play_session.get("preview_url") or await cache_get(f"preview:{key}")
-    if preview_url:
-        filename = f"{slugify(play_session['artist'])}-preview.mp3"
-        return await proxy_audio(preview_url, range_header=range_header, filename=filename)
-
     asyncio.create_task(
         warm_play_hit(
             key,
             title=play_session["title"],
             artist=play_session["artist"],
-            preview_url=preview_url,
+            preview_url=play_session.get("preview_url"),
         )
     )
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Stream not ready — call POST /warm/{key} before play",
-        headers={"Retry-After": "3"},
+
+    filename = f"{slugify(play_session['artist'])}-{slugify(play_session['title'])}.mp3"
+    return await proxy_audio(
+        play_session["stream_url"],
+        range_header=range_header,
+        filename=filename,
     )
 
 
