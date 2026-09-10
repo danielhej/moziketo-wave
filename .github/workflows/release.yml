@@ -54,15 +54,15 @@ jobs:
 
       - name: Set image ref
         id: image
-        run: echo "ref=ghcr.io/danielhej/moziketo-wave:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        run: echo "ref=ghcr.io/moziketo/moziketo-wave:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/danielhej/moziketo-wave:${{ github.ref_name }}
-            ghcr.io/danielhej/moziketo-wave:latest
+            ghcr.io/moziketo/moziketo-wave:${{ github.ref_name }}
+            ghcr.io/moziketo/moziketo-wave:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

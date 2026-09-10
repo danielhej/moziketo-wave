@@ -40,7 +40,7 @@ jobs:
             TAG="sha-${{ github.event.workflow_run.head_sha }}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "ref=ghcr.io/danielhej/moziketo-wave:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref=ghcr.io/moziketo/moziketo-wave:${TAG}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v3
         with:

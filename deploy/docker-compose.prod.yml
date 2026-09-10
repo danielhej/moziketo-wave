@@ -18,7 +18,7 @@ services:
       start_period: 30s
 
   wave:
-    image: ghcr.io/danielhej/moziketo-wave:${MOZ_WAVE_TAG:-main}
+    image: ghcr.io/moziketo/moziketo-wave:${MOZ_WAVE_TAG:-main}
     container_name: moz-wave
     env_file:
       - ./wave.env
@@ -104,7 +104,7 @@ services:
       - moziketo
 
   worker:
-    image: ghcr.io/danielhej/moziketo-wave:${MOZ_WAVE_TAG:-main}
+    image: ghcr.io/moziketo/moziketo-wave:${MOZ_WAVE_TAG:-main}
     container_name: moz-worker
     command: ["taskiq", "worker", "app.tasks.worker:broker"]
     env_file:
