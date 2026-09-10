@@ -88,6 +88,12 @@ class SearchHit(BaseModel):
     duration_seconds: int | None = None
     in_catalog: bool = Field(default=False, description="Already in moziketo catalog with audio")
     slug: str | None = Field(default=None, description="Catalog slug when in_catalog")
+    play_state: str | None = Field(
+        default=None,
+        description="ready | buffering | failed — set for non-catalog Spotify hits after prepare",
+    )
+    buffer_bytes: int | None = Field(default=None, description="Downloader buffer when play_state is set")
+    job_id: str | None = Field(default=None, description="moz-downloader job id when prepared")
 
 
 class SearchResponse(BaseModel):

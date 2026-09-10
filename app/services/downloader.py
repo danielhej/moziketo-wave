@@ -72,12 +72,20 @@ async def start_play(body: DownloaderPlayRequest) -> DownloaderPlayResponse:
         "title": body.title,
         "artist": body.artist,
     }
+    if body.duration_ms is not None:
+        payload["duration_ms"] = body.duration_ms
+    if body.isrc:
+        payload["isrc"] = body.isrc
+    if body.prepare_only:
+        payload["prepare_only"] = True
     headers = {"X-Moziketo-Relay-Secret": settings.downloader_secret}
+
+    endpoint = "/v1/prepare" if body.prepare_only else "/v1/play"
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             response = await client.post(
-                f"{settings.downloader_url.rstrip('/')}/v1/play",
+                f"{settings.downloader_url.rstrip('/')}{endpoint}",
                 json=payload,
                 headers=headers,
             )

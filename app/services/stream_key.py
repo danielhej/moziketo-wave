@@ -31,7 +31,7 @@ PLAY_SESSION_TTL = 3600
 PREVIEW_CACHE_TTL = 86400
 YT_DIRECT_TTL = 4 * 3600
 WARM_POLL_INTERVAL = 0.15
-WARM_MAX_WAIT = 25.0
+WARM_MAX_WAIT = 45.0
 
 
 async def cache_preview_url(key: str, preview_url: str | None) -> None:
@@ -48,7 +48,7 @@ async def cache_play_ready(key: str, session: dict) -> None:
             "title": session["title"],
             "artist": session["artist"],
         },
-        ttl=YT_DIRECT_TTL,
+        ttl=45 * 60,
     )
 
 
@@ -57,16 +57,22 @@ async def get_cached_play_ready(key: str) -> dict | None:
 
 
 async def _mark_play_ready(key: str, session: dict) -> dict:
+    try:
+        job = await get_play_job(session["job_id"])
+        if job.direct_stream_url:
+            session["stream_url"] = job.direct_stream_url
+    except Exception:
+        logger.debug("direct URL lookup failed for %s", key, exc_info=True)
     session["direct_ready"] = True
     await cache_play_ready(key, session)
     await cache_set(f"play:session:{key}", session, ttl=PLAY_SESSION_TTL)
     return session
 
 
-async def _wait_for_direct_ready(
+async def _wait_for_play_ready(
     job_id: str, *, max_wait: float = WARM_MAX_WAIT
 ) -> bool:
-    """Poll moz-downloader until YouTube CDN URL is resolved."""
+    """Poll moz-downloader until yt-dlp resolved a CDN URL (play_ready)."""
     deadline = time.monotonic() + max_wait
     while time.monotonic() < deadline:
         try:
@@ -76,7 +82,7 @@ async def _wait_for_direct_ready(
             continue
         if job.status == "failed":
             return False
-        if job.direct_ready:
+        if job.play_ready or job.direct_ready:
             return True
         await asyncio.sleep(WARM_POLL_INTERVAL)
     return False
@@ -104,7 +110,7 @@ async def warm_play_hit(
         session = cached or await _get_play_session(
             key, title_hint=title, artist_hint=artist
         )
-        ready = await _wait_for_direct_ready(session["job_id"], max_wait=max_wait)
+        ready = await _wait_for_play_ready(session["job_id"], max_wait=max_wait)
         if ready:
             await _mark_play_ready(key, session)
         else:
@@ -117,20 +123,26 @@ async def warm_play_hit(
 
 
 async def warm_play_hits(hits: list[dict], *, max_wait: float = WARM_MAX_WAIT) -> None:
+    tasks: list[asyncio.Task[bool]] = []
     for hit in hits:
         if hit.get("in_catalog"):
             continue
         key = hit.get("key", "")
         if not SPOTIFY_KEY_RE.match(key):
             continue
-        await warm_play_hit(
-            key,
-            title=hit.get("title") or "",
-            artist=hit.get("artist_name") or "",
-            preview_url=hit.get("preview_url"),
-            max_wait=max_wait,
+        tasks.append(
+            asyncio.create_task(
+                warm_play_hit(
+                    key,
+                    title=hit.get("title") or "",
+                    artist=hit.get("artist_name") or "",
+                    preview_url=hit.get("preview_url"),
+                    max_wait=max_wait,
+                )
+            )
         )
-        break
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def warm_track(
@@ -217,6 +229,7 @@ async def _get_play_session(
             title=title,
             artist=artist,
             key=f"{key}.mp3",
+            prepare_only=True,
         )
     )
     preview_url = None
@@ -313,6 +326,17 @@ async def _stream_spotify_hit(
     play_session = await _get_play_session(
         key, title_hint=title_hint, artist_hint=artist_hint
     )
+    if not play_session.get("direct_ready"):
+        if await _wait_for_play_ready(play_session["job_id"], max_wait=WARM_MAX_WAIT):
+            play_session = await _mark_play_ready(key, play_session)
+        else:
+            cached = await get_cached_play_ready(key)
+            if cached:
+                filename = f"{slugify(cached['artist'])}-{slugify(cached['title'])}.mp3"
+                return await proxy_audio(
+                    cached["stream_url"], range_header=range_header, filename=filename
+                )
+
     asyncio.create_task(
         _background_ingest(
             key,
@@ -320,14 +344,6 @@ async def _stream_spotify_hit(
             play_session["title"],
             play_session["artist"],
             play_session.get("cover_url"),
-        )
-    )
-    asyncio.create_task(
-        warm_play_hit(
-            key,
-            title=play_session["title"],
-            artist=play_session["artist"],
-            preview_url=play_session.get("preview_url"),
         )
     )
 

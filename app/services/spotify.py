@@ -20,6 +20,8 @@ class SpotifyTrackHit:
     artist_name: str
     cover_url: str | None
     duration_seconds: int | None
+    duration_ms: int | None = None
+    isrc: str | None = None
     preview_url: str | None = None
 
 
@@ -86,13 +88,16 @@ async def search_tracks(q: str, *, limit: int = 20) -> list[SpotifyTrackHit]:
         artist_name = artists[0].get("name", "") if artists else ""
         images = item.get("album", {}).get("images") or []
         cover = images[0].get("url") if images else None
+        duration_ms = item.get("duration_ms") or None
         hits.append(
             SpotifyTrackHit(
                 key=track_id,
                 title=str(item.get("name") or ""),
                 artist_name=artist_name,
                 cover_url=cover,
-                duration_seconds=(item.get("duration_ms") or 0) // 1000 or None,
+                duration_seconds=(duration_ms or 0) // 1000 or None,
+                duration_ms=duration_ms,
+                isrc=(item.get("external_ids") or {}).get("isrc"),
                 preview_url=item.get("preview_url"),
             )
         )
@@ -113,11 +118,14 @@ async def fetch_track(key: str) -> SpotifyTrackHit | None:
     item = response.json()
     artists = item.get("artists") or []
     images = item.get("album", {}).get("images") or []
+    duration_ms = item.get("duration_ms") or None
     return SpotifyTrackHit(
         key=key,
         title=str(item.get("name") or ""),
         artist_name=artists[0].get("name", "") if artists else "",
         cover_url=images[0].get("url") if images else None,
-        duration_seconds=(item.get("duration_ms") or 0) // 1000 or None,
+        duration_seconds=(duration_ms or 0) // 1000 or None,
+        duration_ms=duration_ms,
+        isrc=(item.get("external_ids") or {}).get("isrc"),
         preview_url=item.get("preview_url"),
     )
