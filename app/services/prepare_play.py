@@ -85,7 +85,7 @@ async def prepare_single_hit(
             await _cache_prepared_session(
                 hit.key,
                 job_id=play.job_id,
-                stream_url=job.direct_stream_url or play.stream_url,
+                stream_url=play.stream_url,
                 title=play.title,
                 artist=play.artist,
             )

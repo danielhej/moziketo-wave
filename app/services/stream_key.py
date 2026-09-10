@@ -57,12 +57,6 @@ async def get_cached_play_ready(key: str) -> dict | None:
 
 
 async def _mark_play_ready(key: str, session: dict) -> dict:
-    try:
-        job = await get_play_job(session["job_id"])
-        if job.direct_stream_url:
-            session["stream_url"] = job.direct_stream_url
-    except Exception:
-        logger.debug("direct URL lookup failed for %s", key, exc_info=True)
     session["direct_ready"] = True
     await cache_play_ready(key, session)
     await cache_set(f"play:session:{key}", session, ttl=PLAY_SESSION_TTL)
