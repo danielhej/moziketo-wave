@@ -44,7 +44,7 @@ async def proxy_audio(
 
     response_headers: dict[str, str] = {
         "Accept-Ranges": upstream.headers.get("accept-ranges", "bytes"),
-        "Cache-Control": upstream.headers.get("cache-control", "public, max-age=3600"),
+        "Cache-Control": "no-cache",
     }
     for name in _AUDIO_HEADERS:
         value = upstream.headers.get(name)
@@ -60,7 +60,7 @@ async def proxy_audio(
 
     async def body() -> AsyncIterator[bytes]:
         try:
-            async for chunk in upstream.aiter_bytes():
+            async for chunk in upstream.aiter_bytes(32768):
                 yield chunk
         finally:
             await upstream.aclose()

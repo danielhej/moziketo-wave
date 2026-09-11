@@ -332,15 +332,14 @@ async def _stream_spotify_hit(
         key, title_hint=title_hint, artist_hint=artist_hint
     )
     if not play_session.get("direct_ready"):
-        if await _wait_for_play_ready(play_session["job_id"], max_wait=WARM_MAX_WAIT):
-            play_session = await _mark_play_ready(key, play_session)
-        else:
-            cached = await get_cached_play_ready(key)
-            if cached and _is_downloader_stream_url(cached.get("stream_url", "")):
-                filename = f"{slugify(cached['artist'])}-{slugify(cached['title'])}.mp3"
-                return await proxy_audio(
-                    cached["stream_url"], range_header=range_header, filename=filename
-                )
+
+        async def _cache_when_ready() -> None:
+            if await _wait_for_play_ready(
+                play_session["job_id"], max_wait=WARM_MAX_WAIT
+            ):
+                await _mark_play_ready(key, play_session)
+
+        asyncio.create_task(_cache_when_ready())
 
     asyncio.create_task(
         _background_ingest(

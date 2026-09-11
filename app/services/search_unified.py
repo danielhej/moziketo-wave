@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Search returns immediately; optional tiny wait for instant cache hits only.
 PREPARE_SEARCH_WAIT_SEC = float(os.getenv("PREPARE_SEARCH_WAIT_SEC", "0.3"))
-PREPARE_SEARCH_TOP_K = int(os.getenv("PREPARE_SEARCH_TOP_K", "3"))
+PREPARE_SEARCH_TOP_K = int(os.getenv("PREPARE_SEARCH_TOP_K", "5"))
 
 
 async def _local_tracks(session: AsyncSession, *, q: str, limit: int) -> list[Track]:
