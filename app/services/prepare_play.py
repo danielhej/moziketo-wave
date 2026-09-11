@@ -42,6 +42,62 @@ async def _cache_prepared_session(
     )
 
 
+async def kick_prepare_hit(
+    hit: SearchHit,
+    *,
+    duration_ms: int | None = None,
+    isrc: str | None = None,
+) -> SearchHit:
+    """Fire /v1/prepare once — no poll loop (search must stay sub-second)."""
+    if hit.in_catalog or not SPOTIFY_KEY_RE.match(hit.key) or not downloader_configured():
+        return hit
+
+    from app.services.stream_key import get_cached_play_ready
+
+    cached = await get_cached_play_ready(hit.key)
+    if cached:
+        hit.play_state = "ready"
+        hit.job_id = cached.get("job_id")
+        return hit
+
+    try:
+        play = await start_play(
+            DownloaderPlayRequest(
+                spotify_url=HttpUrl(f"https://open.spotify.com/track/{hit.key}"),
+                title=hit.title,
+                artist=hit.artist_name,
+                key=f"{hit.key}.mp3",
+                duration_ms=duration_ms,
+                isrc=isrc,
+                prepare_only=True,
+            )
+        )
+    except Exception:
+        logger.debug("kick prepare failed for %s", hit.key, exc_info=True)
+        hit.play_state = "failed"
+        return hit
+
+    hit.job_id = play.job_id
+    try:
+        job = await get_play_job(play.job_id)
+        if job.play_ready or job.direct_ready:
+            hit.play_state = "ready"
+            hit.buffer_bytes = job.buffer_bytes
+            await _cache_prepared_session(
+                hit.key,
+                job_id=play.job_id,
+                stream_url=play.stream_url,
+                title=play.title,
+                artist=play.artist,
+            )
+            return hit
+    except Exception:
+        logger.debug("kick prepare status check failed for %s", hit.key, exc_info=True)
+
+    hit.play_state = "buffering"
+    return hit
+
+
 async def prepare_single_hit(
     hit: SearchHit,
     *,

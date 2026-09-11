@@ -19,15 +19,16 @@ from app.services.catalog import (
     published_track_filter,
 )
 from app.services.downloader import downloader_configured
-from app.services.prepare_play import prepare_single_hit
+from app.services.prepare_play import kick_prepare_hit
 from app.services.spotify import SpotifyTrackHit, spotify_configured
 from app.services.spotify import search_tracks as spotify_search
 from app.services.stream_key import cache_preview_url
 
 logger = logging.getLogger(__name__)
 
-# Max time search waits for overlapping prepares before returning (pending tasks keep running).
-PREPARE_SEARCH_WAIT_SEC = float(os.getenv("PREPARE_SEARCH_WAIT_SEC", "8"))
+# Search returns immediately; optional tiny wait for instant cache hits only.
+PREPARE_SEARCH_WAIT_SEC = float(os.getenv("PREPARE_SEARCH_WAIT_SEC", "0.3"))
+PREPARE_SEARCH_TOP_K = int(os.getenv("PREPARE_SEARCH_TOP_K", "3"))
 
 
 async def _local_tracks(session: AsyncSession, *, q: str, limit: int) -> list[Track]:
@@ -128,19 +129,24 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
     hits: list[SearchHit] = []
     seen_keys: set[str] = set()
     prepare_tasks: list[asyncio.Task[SearchHit]] = []
-    pending_prepares: list[asyncio.Task[SearchHit]] = []
+    prepare_slots = PREPARE_SEARCH_TOP_K
 
-    # Fire /v1/prepare per hit immediately — overlaps with artist query below
+    # Kick prepare for top-K hits only — overlaps with artist query below
     for sp in sp_results:
         hit = _spotify_to_hit(sp, catalog_by_spotify=catalog_by_spotify)
         if not hit.in_catalog and sp.preview_url:
             await cache_preview_url(sp.key, sp.preview_url)
         hits.append(hit)
         seen_keys.add(sp.key)
-        if not hit.in_catalog and downloader_configured():
+        if (
+            not hit.in_catalog
+            and downloader_configured()
+            and prepare_slots > 0
+        ):
+            prepare_slots -= 1
             prepare_tasks.append(
                 asyncio.create_task(
-                    prepare_single_hit(
+                    kick_prepare_hit(
                         hit,
                         duration_ms=sp.duration_ms,
                         isrc=sp.isrc,
@@ -159,7 +165,7 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
     artists_task = asyncio.create_task(_local_artists(session, q=query, limit=limit))
 
     if prepare_tasks:
-        done, pending_prepares = await asyncio.wait(
+        done, _pending = await asyncio.wait(
             prepare_tasks,
             timeout=PREPARE_SEARCH_WAIT_SEC,
         )
@@ -193,8 +199,6 @@ async def unified_search(session: AsyncSession, *, q: str, limit: int = 24) -> S
         track_total=len(hits),
         artist_total=len(artists),
     )
-    # Do not cache partial play_state — background prepares still write yt:ready for Play.
-    if not pending_prepares:
-        payload = response.model_dump(mode="json")
-        await cache_set(cache_key, payload, ttl=300)
+    payload = response.model_dump(mode="json")
+    await cache_set(cache_key, payload, ttl=300)
     return response
