@@ -30,6 +30,16 @@ async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
     await redis.set(f"wave:{key}", json.dumps(value), ex=ttl or settings.cache_ttl_seconds)
 
 
+async def cache_delete(key: str) -> None:
+    if os.getenv("DISABLE_CACHE"):
+        return
+    try:
+        redis = get_redis()
+    except RuntimeError:
+        return
+    await redis.delete(f"wave:{key}")
+
+
 async def cache_delete_pattern(pattern: str) -> None:
     if os.getenv("DISABLE_CACHE"):
         return

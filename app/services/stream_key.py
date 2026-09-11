@@ -17,7 +17,7 @@ from app.db.session import SessionLocal
 from app.models import Artist, Track
 from app.schemas.downloader import DownloaderPlayRequest
 from app.services.audio_proxy import proxy_audio
-from app.services.cache import cache_get, cache_set
+from app.services.cache import cache_delete, cache_get, cache_set
 from app.services.downloader import downloader_configured, get_play_job, start_play
 from app.services.import_catalog import slugify
 from app.services.media import published_track_filter, resolve_audio_url
@@ -302,6 +302,10 @@ async def _background_ingest(
         logger.exception("background ingest failed for %s", key)
 
 
+def _is_downloader_stream_url(url: str) -> bool:
+    return "/v1/stream/" in url and "googlevideo.com" not in url
+
+
 async def _stream_spotify_hit(
     key: str,
     *,
@@ -311,11 +315,18 @@ async def _stream_spotify_hit(
 ) -> StreamingResponse:
     """Click → immediate chunked stream via moz-downloader (pipe or CDN)."""
     cached = await get_cached_play_ready(key)
-    if cached:
+    if cached and _is_downloader_stream_url(cached.get("stream_url", "")):
         filename = f"{slugify(cached['artist'])}-{slugify(cached['title'])}.mp3"
-        return await proxy_audio(
-            cached["stream_url"], range_header=range_header, filename=filename
-        )
+        try:
+            return await proxy_audio(
+                cached["stream_url"], range_header=range_header, filename=filename
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_502_BAD_GATEWAY:
+                raise
+            logger.info("stale stream cache for %s, re-resolving", key)
+            await cache_delete(f"yt:ready:{key}")
+            await cache_delete(f"play:session:{key}")
 
     play_session = await _get_play_session(
         key, title_hint=title_hint, artist_hint=artist_hint
@@ -325,7 +336,7 @@ async def _stream_spotify_hit(
             play_session = await _mark_play_ready(key, play_session)
         else:
             cached = await get_cached_play_ready(key)
-            if cached:
+            if cached and _is_downloader_stream_url(cached.get("stream_url", "")):
                 filename = f"{slugify(cached['artist'])}-{slugify(cached['title'])}.mp3"
                 return await proxy_audio(
                     cached["stream_url"], range_header=range_header, filename=filename
